@@ -73,7 +73,7 @@ class JobCreate(BaseModel):
     title: str
     company: str
     location: str
-    job_type: JobType
+    job_type: str
     experience_required: str
     salary_range: Optional[str] = None
     description: str
@@ -182,7 +182,7 @@ def login(user_data: UserLogin, db: Session = Depends(get_db)):
     }
 
 # ================= AI JOB GENERATION =================
-
+# ⚠️⚠️⚠️ AI FEATURE - NOT TOUCHED ⚠️⚠️⚠️
 @app.post("/api/jobs/generate")
 def generate_job_content(
     request: JobGenerateRequest,
@@ -226,15 +226,30 @@ Return ONLY valid JSON in this format:
         print("AI Error:", str(e))
         raise HTTPException(status_code=500, detail=str(e))
 
+# ================= FIXED JOB ROUTES =================
+
 @app.get("/api/jobs/")
 def get_jobs(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    jobs = db.query(Job).order_by(Job.created_at.desc()).all()
+    """
+    Get jobs based on user role:
+    - HR: sees only their posted jobs
+    - Candidate: sees all OPEN jobs
+    """
+    # For HR: show their posted jobs only
+    if current_user.role == UserRole.HR:
+        jobs = db.query(Job).filter(Job.recruiter_id == current_user.id).order_by(Job.created_at.desc()).all()
+    else:
+        # For candidates: show all open jobs
+        jobs = db.query(Job).filter(Job.status == JobStatus.OPEN).order_by(Job.created_at.desc()).all()
 
-    return [
-        {
+    result = []
+    for job in jobs:
+        # Get the recruiter info for display
+        recruiter = db.query(User).filter(User.id == job.recruiter_id).first()
+        job_dict = {
             "id": job.id,
             "title": job.title,
             "company": job.company,
@@ -246,10 +261,13 @@ def get_jobs(
             "requirements": job.requirements,
             "responsibilities": job.responsibilities,
             "status": job.status.value,
-            "created_at": job.created_at
+            "created_at": job.created_at.isoformat() if job.created_at else None,
+            "recruiter_name": recruiter.full_name if recruiter else "Unknown",
+            "recruiter_id": job.recruiter_id
         }
-        for job in jobs
-    ]
+        result.append(job_dict)
+
+    return result
 
 @app.post("/api/jobs/")
 def create_job(
@@ -257,23 +275,95 @@ def create_job(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_hr_user)
 ):
-    new_job = Job(
-        title=job_data.title,
-        company=job_data.company,
-        location=job_data.location,
-        job_type=job_data.job_type,
-        experience_required=job_data.experience_required,
-        salary_range=job_data.salary_range,
-        description=job_data.description,
-        requirements=job_data.requirements,
-        responsibilities=job_data.responsibilities,
-        status=JobStatus.active,
-        posted_by=current_user.id,
-        created_at=datetime.utcnow()
-    )
+    """
+    Create a new job posting
+    """
+    try:
+        # Validate job_type
+        try:
+            job_type_enum = JobType(job_data.job_type)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid job type. Must be one of: {[jt.value for jt in JobType]}")
 
-    db.add(new_job)
-    db.commit()
-    db.refresh(new_job)
+        # Create new job with CORRECT field names
+        new_job = Job(
+            title=job_data.title,
+            company=job_data.company,
+            location=job_data.location,
+            job_type=job_type_enum,
+            experience_required=job_data.experience_required,
+            salary_range=job_data.salary_range,
+            description=job_data.description,
+            requirements=job_data.requirements,
+            responsibilities=job_data.responsibilities,
+            status=JobStatus.OPEN,  # FIXED: Use OPEN instead of ACTIVE
+            recruiter_id=current_user.id,  # FIXED: Use recruiter_id not posted_by
+            created_at=datetime.utcnow()
+        )
 
-    return {"message": "Job posted successfully"}
+        db.add(new_job)
+        db.commit()
+        db.refresh(new_job)
+
+        # Return the created job with full details
+        return {
+            "message": "Job posted successfully",
+            "job": {
+                "id": new_job.id,
+                "title": new_job.title,
+                "company": new_job.company,
+                "location": new_job.location,
+                "job_type": new_job.job_type.value,
+                "experience_required": new_job.experience_required,
+                "salary_range": new_job.salary_range,
+                "description": new_job.description,
+                "requirements": new_job.requirements,
+                "responsibilities": new_job.responsibilities,
+                "status": new_job.status.value,
+                "created_at": new_job.created_at.isoformat() if new_job.created_at else None,
+                "recruiter_name": current_user.full_name,
+                "recruiter_id": new_job.recruiter_id
+            }
+        }
+    except Exception as e:
+        print(f"Error creating job: {str(e)}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to create job: {str(e)}")
+
+# Optional: Add a job detail endpoint
+@app.get("/api/jobs/{job_id}")
+def get_job_detail(
+    job_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Get detailed information about a specific job"""
+    job = db.query(Job).filter(Job.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    # Check permissions
+    if current_user.role == UserRole.HR and job.recruiter_id != current_user.id:
+        raise HTTPException(status_code=403, detail="You don't have permission to view this job")
+    
+    if current_user.role == UserRole.CANDIDATE and job.status != JobStatus.OPEN:
+        raise HTTPException(status_code=403, detail="This job is not available")
+    
+    recruiter = db.query(User).filter(User.id == job.recruiter_id).first()
+    
+    return {
+        "id": job.id,
+        "title": job.title,
+        "company": job.company,
+        "location": job.location,
+        "job_type": job.job_type.value,
+        "experience_required": job.experience_required,
+        "salary_range": job.salary_range,
+        "description": job.description,
+        "requirements": job.requirements,
+        "responsibilities": job.responsibilities,
+        "status": job.status.value,
+        "created_at": job.created_at.isoformat() if job.created_at else None,
+        "recruiter_name": recruiter.full_name if recruiter else "Unknown",
+        "recruiter_id": job.recruiter_id
+    } 
