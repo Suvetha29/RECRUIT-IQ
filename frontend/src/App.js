@@ -7,6 +7,8 @@ import CreateJob from './components/CreateJob';
 import JobList from './components/JobList';
 import JobDetail from './components/JobDetail';
 import EditJob from './components/EditJob';
+import MyApplications from './components/candidate/MyApplications';
+import HRApplications from './components/hr/HRApplications';
 
 function App() {
   return (
@@ -20,10 +22,13 @@ function App() {
         <Route path="/jobs" element={<JobList />} />
         <Route path="/jobs/:jobId" element={<JobDetail />} />
         <Route path="/jobs/:jobId/edit" element={<EditJob />} />
+
+        {/* ATS Routes */}
+        <Route path="/my-applications" element={<MyApplications />} />
+        <Route path="/hr/applications/:jobId" element={<HRApplications />} />
       </Routes>
     </Router>
   );
 }
 
-export default App; 
-
+export default App;

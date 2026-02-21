@@ -1,18 +1,20 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { jobAPI } from '../services/api';
+import ApplyJob from './candidate/ApplyJob';
+import ATSScore from './applications/ATSScore';
 
 function JobList() {
   const navigate = useNavigate();
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
+  const [selectedJob, setSelectedJob] = useState(null);   // job to apply for
+  const [atsResult, setAtsResult] = useState(null);        // ATS result after applying
 
   useEffect(() => {
     const userData = localStorage.getItem('user');
-    if (userData) {
-      setUser(JSON.parse(userData));
-    }
+    if (userData) setUser(JSON.parse(userData));
     fetchJobs();
   }, []);
 
@@ -27,23 +29,19 @@ function JobList() {
     }
   };
 
+  const handleApplySuccess = (result) => {
+    setSelectedJob(null);   // close apply modal
+    setAtsResult(result);   // show ATS score modal
+    fetchJobs();            // refresh to update already_applied flag
+  };
+
   const getJobTypeLabel = (type) => {
-    const labels = {
-      full_time: 'Full Time',
-      part_time: 'Part Time',
-      contract: 'Contract',
-      internship: 'Internship',
-    };
+    const labels = { full_time: 'Full Time', part_time: 'Part Time', contract: 'Contract', internship: 'Internship' };
     return labels[type] || type;
   };
 
   const getJobTypeColor = (type) => {
-    const colors = {
-      full_time: '#28a745',
-      part_time: '#ffc107',
-      contract: '#17a2b8',
-      internship: '#6f42c1',
-    };
+    const colors = { full_time: '#28a745', part_time: '#ffc107', contract: '#17a2b8', internship: '#6f42c1' };
     return colors[type] || '#6c757d';
   };
 
@@ -60,14 +58,17 @@ function JobList() {
     <div style={styles.container}>
       <div style={styles.header}>
         <div>
-          <h2 style={styles.title}>Available Positions</h2>
+          <h2 style={styles.title}> <b> Available Positions</b> </h2>
           <p style={styles.subtitle}>{jobs.length} jobs found</p>
         </div>
         <div style={styles.headerActions}>
-          <button style={styles.dashboardBtn} onClick={() => navigate('/dashboard')}>
-            Dashboard
-          </button>
-          {user && user.role === 'hr' && (
+          <button style={styles.dashboardBtn} onClick={() => navigate('/dashboard')}>Dashboard</button>
+          {user?.role === 'candidate' && (
+            <button style={styles.myAppsBtn} onClick={() => navigate('/my-applications')}>
+              📋 My Applications
+            </button>
+          )}
+          {user?.role === 'hr' && (
             <button style={styles.createBtn} onClick={() => navigate('/create-job')}>
               + Post New Job
             </button>
@@ -86,12 +87,7 @@ function JobList() {
             <div key={job.id} style={styles.jobCard}>
               <div style={styles.cardHeader}>
                 <h3 style={styles.jobTitle}>{job.title}</h3>
-                <span
-                  style={{
-                    ...styles.typeBadge,
-                    backgroundColor: getJobTypeColor(job.job_type),
-                  }}
-                >
+                <span style={{ ...styles.typeBadge, backgroundColor: getJobTypeColor(job.job_type) }}>
                   {getJobTypeLabel(job.job_type)}
                 </span>
               </div>
@@ -103,40 +99,77 @@ function JobList() {
 
               <div style={styles.metadata}>
                 <span style={styles.metaItem}>💼 {job.experience_required}</span>
-                {job.salary_range && (
-                  <span style={styles.metaItem}>💰 {job.salary_range}</span>
-                )}
+                {job.salary_range && <span style={styles.metaItem}>💰 {job.salary_range}</span>}
               </div>
 
               <p style={styles.description}>
-                {job.description.length > 150
-                  ? job.description.substring(0, 150) + '...'
-                  : job.description}
+                {job.description.length > 150 ? job.description.substring(0, 150) + '...' : job.description}
               </p>
 
               <div style={styles.cardFooter}>
                 <span style={styles.postedBy}>Posted by {job.recruiter_name}</span>
-                <button
-                  style={styles.viewBtn}
-                  onClick={() => navigate(`/jobs/${job.id}`)}
-                >
-                  View Details →
-                </button>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button style={styles.viewBtn} onClick={() => navigate(`/jobs/${job.id}`)}>
+                    View Details
+                  </button>
+
+                  {/* Candidate: Apply button */}
+                  {user?.role === 'candidate' && (
+                    <button
+                      style={{
+                        ...styles.applyBtn,
+                        backgroundColor: job.already_applied ? '#6c757d' : '#28a745',
+                        cursor: job.already_applied ? 'not-allowed' : 'pointer'
+                      }}
+                      onClick={() => !job.already_applied && setSelectedJob(job)}
+                      disabled={job.already_applied}
+                    >
+                      {job.already_applied ? '✓ Applied' : '🚀 Apply Now'}
+                    </button>
+                  )}
+
+                  {/* HR: View Applicants button */}
+                  {user?.role === 'hr' && (
+                    <button
+                      style={styles.applicantsBtn}
+                      onClick={() => navigate(`/hr/applications/${job.id}`)}
+                    >
+                      👥 Applicants
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           ))
         )}
       </div>
+
+      {/* Apply Modal */}
+      {selectedJob && (
+        <ApplyJob
+          job={selectedJob}
+          onClose={() => setSelectedJob(null)}
+          onSuccess={handleApplySuccess}
+        />
+      )}
+
+      {/* ATS Score Modal */}
+      {atsResult && (
+        <ATSScore
+          score={atsResult.ats_score}
+          feedback={atsResult.ats_feedback}
+          matchedSkills={atsResult.matched_skills}
+          missingSkills={atsResult.missing_skills}
+          recommendations={atsResult.recommendations}
+          onClose={() => navigate('/my-applications')}
+        />
+      )}
     </div>
   );
 }
 
 const styles = {
-  container: {
-    minHeight: '100vh',
-    backgroundColor: '#f0f2f5',
-    padding: '20px',
-  },
+  container: { minHeight: '100vh', backgroundColor: '#f0f2f5', padding: '20px' },
   header: {
     display: 'flex',
     justifyContent: 'space-between',
@@ -147,39 +180,20 @@ const styles = {
     borderRadius: '12px',
     boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
   },
-  title: {
-    margin: 0,
-    fontSize: '28px',
-    color: '#1a1a1a',
-  },
-  subtitle: {
-    margin: '5px 0 0 0',
-    color: '#6c757d',
-    fontSize: '14px',
-  },
-  headerActions: {
-    display: 'flex',
-    gap: '10px',
-  },
+  title: { margin: 0, fontSize: '28px', color: '#1a1a1a' },
+  subtitle: { margin: '5px 0 0 0', color: '#6c757d', fontSize: '14px' },
+  headerActions: { display: 'flex', gap: '10px' },
   dashboardBtn: {
-    padding: '10px 20px',
-    backgroundColor: '#6c757d',
-    color: 'white',
-    border: 'none',
-    borderRadius: '8px',
-    cursor: 'pointer',
-    fontSize: '14px',
-    fontWeight: '500',
+    padding: '10px 20px', backgroundColor: '#6c757d', color: 'white',
+    border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '14px',
+  },
+  myAppsBtn: {
+    padding: '10px 20px', backgroundColor: '#6f42c1', color: 'white',
+    border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '14px',
   },
   createBtn: {
-    padding: '10px 20px',
-    backgroundColor: '#007bff',
-    color: 'white',
-    border: 'none',
-    borderRadius: '8px',
-    cursor: 'pointer',
-    fontSize: '14px',
-    fontWeight: '500',
+    padding: '10px 20px', backgroundColor: '#007bff', color: 'white',
+    border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '14px',
   },
   jobGrid: {
     display: 'grid',
@@ -189,106 +203,51 @@ const styles = {
     margin: '0 auto',
   },
   jobCard: {
-    backgroundColor: 'white',
-    borderRadius: '12px',
-    padding: '24px',
+    backgroundColor: 'white', borderRadius: '12px', padding: '24px',
     boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-    transition: 'transform 0.2s, box-shadow 0.2s',
-    cursor: 'pointer',
   },
-  cardHeader: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: '12px',
-  },
-  jobTitle: {
-    margin: 0,
-    fontSize: '20px',
-    color: '#1a1a1a',
-    flex: 1,
-  },
+  cardHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' },
+  jobTitle: { margin: 0, fontSize: '20px', color: '#1a1a1a', flex: 1 },
   typeBadge: {
-    padding: '4px 12px',
-    borderRadius: '20px',
-    color: 'white',
-    fontSize: '12px',
-    fontWeight: '600',
-    marginLeft: '10px',
+    padding: '4px 12px', borderRadius: '20px', color: 'white',
+    fontSize: '12px', fontWeight: '600', marginLeft: '10px',
   },
-  companyInfo: {
-    display: 'flex',
-    gap: '15px',
-    marginBottom: '12px',
-  },
-  company: {
-    fontSize: '14px',
-    color: '#495057',
-    fontWeight: '500',
-  },
-  location: {
-    fontSize: '14px',
-    color: '#495057',
-  },
-  metadata: {
-    display: 'flex',
-    gap: '15px',
-    marginBottom: '15px',
-  },
+  companyInfo: { display: 'flex', gap: '15px', marginBottom: '12px' },
+  company: { fontSize: '14px', color: '#495057', fontWeight: '500' },
+  location: { fontSize: '14px', color: '#495057' },
+  metadata: { display: 'flex', gap: '15px', marginBottom: '15px' },
   metaItem: {
-    fontSize: '13px',
-    color: '#6c757d',
-    backgroundColor: '#f8f9fa',
-    padding: '6px 12px',
-    borderRadius: '6px',
+    fontSize: '13px', color: '#6c757d', backgroundColor: '#f8f9fa',
+    padding: '6px 12px', borderRadius: '6px',
   },
-  description: {
-    fontSize: '14px',
-    color: '#495057',
-    lineHeight: '1.6',
-    marginBottom: '20px',
-  },
+  description: { fontSize: '14px', color: '#495057', lineHeight: '1.6', marginBottom: '20px' },
   cardFooter: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingTop: '15px',
-    borderTop: '1px solid #e9ecef',
+    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+    paddingTop: '15px', borderTop: '1px solid #e9ecef',
   },
-  postedBy: {
-    fontSize: '13px',
-    color: '#6c757d',
-  },
+  postedBy: { fontSize: '13px', color: '#6c757d' },
   viewBtn: {
-    padding: '8px 16px',
-    backgroundColor: '#007bff',
-    color: 'white',
-    border: 'none',
-    borderRadius: '6px',
-    cursor: 'pointer',
-    fontSize: '14px',
-    fontWeight: '500',
+    padding: '8px 16px', backgroundColor: '#007bff', color: 'white',
+    border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px',
+  },
+  applyBtn: {
+    padding: '8px 16px', color: 'white', border: 'none',
+    borderRadius: '6px', fontSize: '13px', fontWeight: '600',
+  },
+  applicantsBtn: {
+    padding: '8px 16px', backgroundColor: '#17a2b8', color: 'white',
+    border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px',
   },
   loadingContainer: {
-    display: 'flex',
-    flexDirection: 'column',
-    justifyContent: 'center',
-    alignItems: 'center',
-    minHeight: '100vh',
+    display: 'flex', flexDirection: 'column',
+    justifyContent: 'center', alignItems: 'center', minHeight: '100vh',
   },
   spinner: {
-    border: '4px solid #f3f3f3',
-    borderTop: '4px solid #007bff',
-    borderRadius: '50%',
-    width: '40px',
-    height: '40px',
+    border: '4px solid #f3f3f3', borderTop: '4px solid #007bff',
+    borderRadius: '50%', width: '40px', height: '40px',
     animation: 'spin 1s linear infinite',
   },
-  emptyState: {
-    textAlign: 'center',
-    padding: '60px 20px',
-    gridColumn: '1 / -1',
-  },
+  emptyState: { textAlign: 'center', padding: '60px 20px', gridColumn: '1 / -1' },
 };
 
 export default JobList;

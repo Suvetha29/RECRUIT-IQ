@@ -23,15 +23,10 @@ function Dashboard() {
   const fetchJobs = async (token) => {
     try {
       const response = await fetch(`${API_BASE}/api/jobs/`, {
-        headers: {
-          "Authorization": "Bearer " + token
-        }
+        headers: { "Authorization": "Bearer " + token }
       });
-
       const data = await response.json();
-      if (response.ok) {
-        setJobs(data);
-      }
+      if (response.ok) setJobs(data);
     } catch (error) {
       console.error("Error fetching jobs:", error);
     }
@@ -49,85 +44,58 @@ function Dashboard() {
     <div style={styles.container}>
       <div style={styles.header}>
         <h2>Dashboard</h2>
-        <button style={styles.logoutBtn} onClick={handleLogout}>
-          Logout
-        </button>
+        <button style={styles.logoutBtn} onClick={handleLogout}>Logout</button>
       </div>
 
       <div style={styles.content}>
+        {/* Welcome Card */}
         <div style={styles.welcomeCard}>
           <h3>Welcome back, {user.full_name}! 👋</h3>
           <p style={styles.role}>Role: {user.role.toUpperCase()}</p>
         </div>
 
+        {/* Quick Actions */}
         <div style={styles.quickActions}>
           <h4>Quick Actions</h4>
           <div style={styles.actionGrid}>
-            {/* HR SPECIFIC ACTIONS */}
+
             {user.role === 'hr' && (
               <>
-                <div
-                  style={styles.actionCard}
-                  onClick={() => navigate('/create-job')}
-                >
+                <div style={styles.actionCard} onClick={() => navigate('/create-job')}>
                   <div style={styles.icon}>➕</div>
                   <h5>Post New Job</h5>
                   <p>Create a new job posting</p>
                 </div>
-
-                {/* NEW: HR View Applicants Button */}
-                <div
-                  style={styles.actionCard}
-                  onClick={() => navigate('/hr/applications')}
-                >
-                  <div style={styles.icon}>👥</div>
-                  <h5>View Applicants</h5>
-                  <p>Review candidate applications</p>
+                <div style={styles.actionCard} onClick={() => navigate('/jobs')}>
+                  <div style={styles.icon}>💼</div>
+                  <h5>View All Applicants</h5>
+                  <p>See all your posted jobs</p>
                 </div>
               </>
             )}
 
-            {/* CANDIDATE SPECIFIC ACTIONS */}
             {user.role === 'candidate' && (
               <>
-                {/* NEW: Candidate Browse Jobs Button */}
-                <div
-                  style={styles.actionCard}
-                  onClick={() => navigate('/jobs')}
-                >
-                  <div style={styles.icon}>💼</div>
+                <div style={styles.actionCard} onClick={() => navigate('/jobs')}>
+                  <div style={styles.icon}>🔍</div>
                   <h5>Browse Jobs</h5>
                   <p>Find and apply to jobs</p>
                 </div>
-
-                {/* NEW: Candidate My Applications Button */}
-                <div
-                  style={styles.actionCard}
-                  onClick={() => navigate('/my-applications')}
-                >
+                <div style={styles.actionCard} onClick={() => navigate('/my-applications')}>
                   <div style={styles.icon}>📋</div>
                   <h5>My Applications</h5>
-                  <p>Track your job applications</p>
+                  <p>Track your job applications & ATS scores</p>
                 </div>
               </>
             )}
 
-            {/* COMMON ACTION FOR BOTH ROLES */}
-            <div
-              style={styles.actionCard}
-              onClick={() => navigate('/jobs')}
-            >
-              <div style={styles.icon}>💼</div>
-              <h5>View All Jobs</h5>
-              <p>Browse available positions</p>
-            </div>
           </div>
         </div>
 
-        {/* JOB LIST SECTION */}
+        {/* Job List Section */}
         <div style={styles.jobsSection}>
           <h3>
-            {user.role === 'hr' ? 'Your Posted Jobs' : 'Recent Jobs'}
+            {user.role === 'hr' ? 'Your Posted Jobs' : 'Available Jobs'}
             {jobs.length > 0 && <span style={styles.jobCount}>({jobs.length})</span>}
           </h3>
 
@@ -135,10 +103,7 @@ function Dashboard() {
             <div style={styles.emptyState}>
               <p>No jobs {user.role === 'hr' ? 'posted' : 'available'} yet.</p>
               {user.role === 'hr' && (
-                <button 
-                  style={styles.createJobBtn}
-                  onClick={() => navigate('/create-job')}
-                >
+                <button style={styles.createJobBtn} onClick={() => navigate('/create-job')}>
                   Post Your First Job
                 </button>
               )}
@@ -159,31 +124,33 @@ function Dashboard() {
                 <p><strong>Location:</strong> {job.location}</p>
                 <p><strong>Type:</strong> {job.job_type}</p>
                 <p><strong>Experience:</strong> {job.experience_required}</p>
-                
-                {/* NEW: Action buttons for each job */}
+
                 <div style={styles.jobActions}>
-                  <button 
-                    style={styles.viewJobBtn}
-                    onClick={() => navigate(`/jobs/${job.id}`)}
-                  >
+                  <button style={styles.viewJobBtn} onClick={() => navigate(`/jobs/${job.id}`)}>
                     View Details
                   </button>
-                  
+
+                  {/* Candidate: Apply button */}
                   {user.role === 'candidate' && (
-                    <button 
-                      style={styles.applyJobBtn}
-                      onClick={() => navigate(`/apply/${job.id}`)}
+                    <button
+                      style={{
+                        ...styles.applyJobBtn,
+                        backgroundColor: job.already_applied ? '#6c757d' : '#28a745',
+                        cursor: job.already_applied ? 'not-allowed' : 'pointer'
+                      }}
+                      onClick={() => !job.already_applied && navigate(`/jobs/${job.id}`)}
                     >
-                      Apply Now
+                      {job.already_applied ? '✓ Applied' : 'Apply Now'}
                     </button>
                   )}
-                  
+
+                  {/* HR: View Applicants button — links to that specific job's applicants */}
                   {user.role === 'hr' && (
-                    <button 
+                    <button
                       style={styles.viewApplicantsBtn}
-                      onClick={() => navigate('/hr/applications')}
+                      onClick={() => navigate(`/hr/applications/${job.id}`)}
                     >
-                      View Applicants
+                      👥 View Applicants
                     </button>
                   )}
                 </div>
@@ -192,26 +159,27 @@ function Dashboard() {
           )}
         </div>
 
-        {/* NEW: ATS Stats Section for HR */}
+        {/* Stats Section for HR */}
         {user.role === 'hr' && jobs.length > 0 && (
           <div style={styles.statsSection}>
             <h3>📊 Quick Stats</h3>
             <div style={styles.statsGrid}>
               <div style={styles.statCard}>
                 <div style={styles.statNumber}>{jobs.length}</div>
-                <div style={styles.statLabel}>Active Jobs</div>
+                <div style={styles.statLabel}>Posted Jobs</div>
               </div>
               <div style={styles.statCard}>
-                <div style={styles.statNumber}>0</div>
-                <div style={styles.statLabel}>Total Applicants</div>
+                <div style={styles.statNumber}>{jobs.filter(j => j.status === 'open').length}</div>
+                <div style={styles.statLabel}>Open Jobs</div>
               </div>
               <div style={styles.statCard}>
-                <div style={styles.statNumber}>0%</div>
-                <div style={styles.statLabel}>Avg ATS Score</div>
+                <div style={styles.statNumber}>{jobs.filter(j => j.status === 'closed').length}</div>
+                <div style={styles.statLabel}>Closed Jobs</div>
               </div>
             </div>
           </div>
         )}
+
       </div>
     </div>
   );
@@ -245,12 +213,7 @@ const styles = {
     marginBottom: '30px',
     boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
   },
-  role: { 
-    color: '#007bff', 
-    fontWeight: '600', 
-    marginTop: '10px',
-    fontSize: '14px',
-  },
+  role: { color: '#007bff', fontWeight: '600', marginTop: '10px', fontSize: '14px' },
   quickActions: {
     backgroundColor: 'white',
     padding: '30px',
@@ -270,11 +233,8 @@ const styles = {
     borderRadius: '8px',
     cursor: 'pointer',
     textAlign: 'center',
-    transition: 'transform 0.2s, box-shadow 0.2s',
-    ':hover': {
-      transform: 'translateY(-2px)',
-      boxShadow: '0 4px 8px rgba(0,0,0,0.1)',
-    },
+    border: '2px solid transparent',
+    transition: 'all 0.2s',
   },
   icon: { fontSize: '40px', marginBottom: '15px' },
   jobsSection: {
@@ -284,18 +244,8 @@ const styles = {
     marginBottom: '30px',
     boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
   },
-  jobCount: {
-    marginLeft: '10px',
-    fontSize: '16px',
-    color: '#6c757d',
-    fontWeight: 'normal',
-  },
-  emptyState: {
-    textAlign: 'center',
-    padding: '40px',
-    backgroundColor: '#f8f9fa',
-    borderRadius: '8px',
-  },
+  jobCount: { marginLeft: '10px', fontSize: '16px', color: '#6c757d', fontWeight: 'normal' },
+  emptyState: { textAlign: 'center', padding: '40px', backgroundColor: '#f8f9fa', borderRadius: '8px' },
   createJobBtn: {
     padding: '10px 20px',
     backgroundColor: '#007bff',
@@ -346,11 +296,9 @@ const styles = {
   },
   applyJobBtn: {
     padding: '8px 16px',
-    backgroundColor: '#28a745',
     color: 'white',
     border: 'none',
     borderRadius: '6px',
-    cursor: 'pointer',
     fontSize: '13px',
     fontWeight: '500',
   },
@@ -376,22 +324,9 @@ const styles = {
     gap: '20px',
     marginTop: '20px',
   },
-  statCard: {
-    textAlign: 'center',
-    padding: '20px',
-    backgroundColor: '#f8f9fa',
-    borderRadius: '8px',
-  },
-  statNumber: {
-    fontSize: '32px',
-    fontWeight: 'bold',
-    color: '#007bff',
-  },
-  statLabel: {
-    fontSize: '14px',
-    color: '#6c757d',
-    marginTop: '5px',
-  },
+  statCard: { textAlign: 'center', padding: '20px', backgroundColor: '#f8f9fa', borderRadius: '8px' },
+  statNumber: { fontSize: '32px', fontWeight: 'bold', color: '#007bff' },
+  statLabel: { fontSize: '14px', color: '#6c757d', marginTop: '5px' },
 };
 
 export default Dashboard;

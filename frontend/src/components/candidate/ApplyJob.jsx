@@ -1,368 +1,178 @@
 import React, { useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import { applicationAPI } from '../../services/api';
+import { useNavigate } from 'react-router-dom';
+import api from '../../services/api';
 
-function ApplyJob() {
-  const { jobId } = useParams();
-  const navigate = useNavigate();
+const ApplyJob = ({ job, onClose, onSuccess }) => {
+  const [coverLetter, setCoverLetter] = useState('');
   const [resume, setResume] = useState(null);
-  const [uploading, setUploading] = useState(false);
-  const [atsResult, setAtsResult] = useState(null);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [fileName, setFileName] = useState('');
+  const [dragOver, setDragOver] = useState(false);
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
-    if (file) {
-      const fileType = file.name.split('.').pop().toLowerCase();
-      if (fileType !== 'pdf' && fileType !== 'docx') {
-        setError('Please upload PDF or DOCX file only');
-        return;
-      }
-      if (file.size > 5 * 1024 * 1024) {
-        setError('File size should be less than 5MB');
-        return;
-      }
-      setResume(file);
-      setFileName(file.name);
-      setError('');
+    validateAndSetFile(file);
+  };
+
+  const validateAndSetFile = (file) => {
+    if (!file) return;
+    if (file.type !== 'application/pdf') {
+      setError('Only PDF files are accepted.');
+      return;
     }
+    if (file.size > 5 * 1024 * 1024) {
+      setError('File size must be under 5MB.');
+      return;
+    }
+    setError('');
+    setResume(file);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files[0];
+    validateAndSetFile(file);
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!resume) {
-      setError('Please select a resume file');
-      return;
-    }
+    if (!resume) { setError('Please upload your resume.'); return; }
 
-    setUploading(true);
-    const formData = new FormData();
-    formData.append('resume', resume);
+    setLoading(true);
+    setError('');
 
     try {
-      const response = await applicationAPI.applyToJob(jobId, formData);
-      setAtsResult(response.data);
+      const formData = new FormData();
+      formData.append('job_id', job.id);
+      formData.append('resume', resume);
+      if (coverLetter.trim()) formData.append('cover_letter', coverLetter);
+
+      const response = await api.post('/api/applications/apply', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+
+      onSuccess(response.data);
     } catch (err) {
-      setError(err.response?.data?.detail || 'Error applying to job');
+      setError(err.response?.data?.detail || 'Failed to submit application.');
     } finally {
-      setUploading(false);
+      setLoading(false);
     }
   };
 
-  if (atsResult) {
-    return (
-      <div style={styles.container}>
-        <div style={styles.card}>
-          <h2 style={styles.title}>🎉 Application Submitted!</h2>
-          
-          <div style={styles.scoreCard}>
-            <div style={styles.scoreCircle}>
-              <div style={styles.scoreNumber}>{atsResult.ats_score}%</div>
-              <div style={styles.scoreLabel}>ATS Score</div>
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+
+        {/* Header */}
+        <div className="bg-gradient-to-r from-indigo-600 to-purple-600 p-6 rounded-t-2xl">
+          <div className="flex justify-between items-start">
+            <div>
+              <h2 className="text-xl font-bold text-white">Apply for Position</h2>
+              <p className="text-indigo-200 mt-1">{job.title} · {job.company}</p>
             </div>
-          </div>
-
-          <div style={styles.statsGrid}>
-            <div style={styles.statItem}>
-              <div style={styles.statValue}>{atsResult.skills_score}%</div>
-              <div style={styles.statLabel}>Skills Match</div>
-            </div>
-            <div style={styles.statItem}>
-              <div style={styles.statValue}>{atsResult.experience_score}%</div>
-              <div style={styles.statLabel}>Experience</div>
-            </div>
-            <div style={styles.statItem}>
-              <div style={styles.statValue}>{atsResult.keyword_score}%</div>
-              <div style={styles.statLabel}>Keywords</div>
-            </div>
-          </div>
-
-          <div style={styles.skillsSection}>
-            {atsResult.matched_skills && atsResult.matched_skills.length > 0 && (
-              <>
-                <h3 style={styles.sectionTitle}>✅ Matched Skills</h3>
-                <div style={styles.skillsList}>
-                  {atsResult.matched_skills.map((skill, index) => (
-                    <span key={index} style={styles.skillBadge.success}>
-                      {skill}
-                    </span>
-                  ))}
-                </div>
-              </>
-            )}
-
-            {atsResult.missing_skills && atsResult.missing_skills.length > 0 && (
-              <>
-                <h3 style={styles.sectionTitle}>⚠️ Skills to Improve</h3>
-                <div style={styles.skillsList}>
-                  {atsResult.missing_skills.map((skill, index) => (
-                    <span key={index} style={styles.skillBadge.warning}>
-                      {skill}
-                    </span>
-                  ))}
-                </div>
-              </>
-            )}
-
-            {atsResult.recommendations && atsResult.recommendations.length > 0 && (
-              <>
-                <h3 style={styles.sectionTitle}>💡 Recommendations</h3>
-                <ul style={styles.recommendations}>
-                  {atsResult.recommendations.map((rec, index) => (
-                    <li key={index}>{rec}</li>
-                  ))}
-                </ul>
-              </>
-            )}
-          </div>
-
-          <div style={styles.buttonGroup}>
-            <button 
-              style={styles.button.primary}
-              onClick={() => navigate('/my-applications')}
-            >
-              View My Applications
-            </button>
-            <button 
-              style={styles.button.secondary}
-              onClick={() => navigate('/jobs')}
-            >
-              Browse More Jobs
-            </button>
+            <button onClick={onClose} className="text-white hover:text-indigo-200 text-2xl leading-none">×</button>
           </div>
         </div>
-      </div>
-    );
-  }
 
-  return (
-    <div style={styles.container}>
-      <div style={styles.card}>
-        <h2 style={styles.title}>Apply for Job</h2>
-        <p style={styles.subtitle}>Upload your resume (PDF or DOCX, max 5MB)</p>
+        <form onSubmit={handleSubmit} className="p-6 space-y-6">
+          {error && (
+            <div className="bg-red-50 border-l-4 border-red-500 p-4 text-red-700 text-sm rounded-lg">
+              {error}
+            </div>
+          )}
 
-        {error && <div style={styles.error}>{error}</div>}
-
-        <form onSubmit={handleSubmit}>
-          <div style={styles.fileInput}>
-            <input
-              type="file"
-              accept=".pdf,.docx"
-              onChange={handleFileChange}
-              disabled={uploading}
-              id="resume-upload"
-              style={{ display: 'none' }}
-            />
-            <label htmlFor="resume-upload" style={styles.fileLabel}>
-              {fileName ? `📄 ${fileName}` : 'Choose Resume File'}
+          {/* Resume Upload */}
+          <div>
+            <label className="block text-sm font-semibold text-slate-700 mb-2">
+              Resume <span className="text-red-500">*</span>
+              <span className="text-slate-400 font-normal ml-1">(PDF only, max 5MB)</span>
             </label>
+            <div
+              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={handleDrop}
+              className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors ${
+                dragOver ? 'border-indigo-500 bg-indigo-50' :
+                resume ? 'border-green-400 bg-green-50' : 'border-slate-300 hover:border-indigo-400'
+              }`}
+              onClick={() => document.getElementById('resume-input').click()}
+            >
+              {resume ? (
+                <div>
+                  <div className="text-4xl mb-2">📄</div>
+                  <p className="text-green-700 font-semibold">{resume.name}</p>
+                  <p className="text-green-600 text-sm mt-1">{(resume.size / 1024).toFixed(1)} KB · Click to change</p>
+                </div>
+              ) : (
+                <div>
+                  <div className="text-4xl mb-2">📁</div>
+                  <p className="text-slate-600 font-medium">Drag & drop your resume here</p>
+                  <p className="text-slate-400 text-sm mt-1">or click to browse files</p>
+                </div>
+              )}
+              <input
+                id="resume-input"
+                type="file"
+                accept=".pdf"
+                className="hidden"
+                onChange={handleFileChange}
+              />
+            </div>
           </div>
 
-          <button 
-            type="submit" 
-            style={{
-              ...styles.submitButton,
-              opacity: (!resume || uploading) ? 0.6 : 1,
-              cursor: (!resume || uploading) ? 'not-allowed' : 'pointer'
-            }}
-            disabled={!resume || uploading}
-          >
-            {uploading ? 'Analyzing Resume...' : 'Submit Application'}
-          </button>
-        </form>
+          {/* Cover Letter */}
+          <div>
+            <label className="block text-sm font-semibold text-slate-700 mb-2">
+              Cover Letter <span className="text-slate-400 font-normal">(Optional)</span>
+            </label>
+            <textarea
+              rows={5}
+              placeholder="Tell us why you're a great fit for this role..."
+              value={coverLetter}
+              onChange={(e) => setCoverLetter(e.target.value)}
+              className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none resize-none text-slate-700"
+            />
+          </div>
 
-        <p style={styles.note}>
-          Your resume will be analyzed by our ATS system to calculate your match score
-        </p>
+          {/* ATS Info Banner */}
+          <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 flex gap-3">
+            <span className="text-2xl">🤖</span>
+            <div>
+              <p className="text-indigo-800 font-semibold text-sm">AI-Powered ATS Scoring</p>
+              <p className="text-indigo-600 text-xs mt-1">Your resume will be automatically scored against the job requirements. You'll see your match score immediately after applying.</p>
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="flex gap-3 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 py-3 border border-slate-300 text-slate-700 font-semibold rounded-xl hover:bg-slate-50 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={loading || !resume}
+              className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white font-semibold rounded-xl transition-colors shadow-lg shadow-indigo-200"
+            >
+              {loading ? (
+                <span className="flex items-center justify-center gap-2">
+                  <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                  </svg>
+                  Submitting & Scoring...
+                </span>
+              ) : 'Submit Application'}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );
-}
-
-const styles = {
-  container: {
-    minHeight: '100vh',
-    backgroundColor: '#f0f2f5',
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: '20px',
-  },
-  card: {
-    backgroundColor: 'white',
-    padding: '40px',
-    borderRadius: '12px',
-    boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-    maxWidth: '600px',
-    width: '100%',
-  },
-  title: {
-    margin: '0 0 10px 0',
-    color: '#1a1a1a',
-    fontSize: '28px',
-    textAlign: 'center',
-  },
-  subtitle: {
-    margin: '0 0 20px 0',
-    color: '#6c757d',
-    fontSize: '16px',
-    textAlign: 'center',
-  },
-  fileInput: {
-    margin: '20px 0',
-    padding: '30px',
-    border: '2px dashed #007bff',
-    borderRadius: '8px',
-    textAlign: 'center',
-    backgroundColor: '#f8f9fa',
-  },
-  fileLabel: {
-    padding: '10px 20px',
-    backgroundColor: '#007bff',
-    color: 'white',
-    borderRadius: '6px',
-    cursor: 'pointer',
-    fontSize: '16px',
-    display: 'inline-block',
-  },
-  submitButton: {
-    width: '100%',
-    padding: '14px',
-    backgroundColor: '#28a745',
-    color: 'white',
-    border: 'none',
-    borderRadius: '6px',
-    fontSize: '16px',
-    fontWeight: '600',
-  },
-  error: {
-    backgroundColor: '#f8d7da',
-    color: '#721c24',
-    padding: '12px',
-    borderRadius: '6px',
-    marginBottom: '20px',
-    border: '1px solid #f5c6cb',
-  },
-  note: {
-    marginTop: '20px',
-    color: '#6c757d',
-    fontSize: '14px',
-    textAlign: 'center',
-  },
-  scoreCard: {
-    display: 'flex',
-    justifyContent: 'center',
-    margin: '20px 0',
-  },
-  scoreCircle: {
-    width: '150px',
-    height: '150px',
-    borderRadius: '50%',
-    background: 'linear-gradient(135deg, #007bff, #00d4ff)',
-    display: 'flex',
-    flexDirection: 'column',
-    justifyContent: 'center',
-    alignItems: 'center',
-    color: 'white',
-    boxShadow: '0 4px 10px rgba(0,123,255,0.3)',
-  },
-  scoreNumber: {
-    fontSize: '48px',
-    fontWeight: 'bold',
-  },
-  scoreLabel: {
-    fontSize: '16px',
-  },
-  statsGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(3, 1fr)',
-    gap: '15px',
-    margin: '30px 0',
-  },
-  statItem: {
-    textAlign: 'center',
-    padding: '15px',
-    backgroundColor: '#f8f9fa',
-    borderRadius: '8px',
-  },
-  statValue: {
-    fontSize: '24px',
-    fontWeight: 'bold',
-    color: '#007bff',
-  },
-  statLabel: {
-    fontSize: '12px',
-    color: '#6c757d',
-    marginTop: '5px',
-  },
-  skillsSection: {
-    marginTop: '30px',
-  },
-  sectionTitle: {
-    fontSize: '18px',
-    margin: '20px 0 10px 0',
-    color: '#1a1a1a',
-  },
-  skillsList: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: '10px',
-    marginBottom: '20px',
-  },
-  skillBadge: {
-    success: {
-      padding: '6px 12px',
-      backgroundColor: '#d4edda',
-      color: '#155724',
-      borderRadius: '20px',
-      fontSize: '14px',
-      border: '1px solid #c3e6cb',
-    },
-    warning: {
-      padding: '6px 12px',
-      backgroundColor: '#fff3cd',
-      color: '#856404',
-      borderRadius: '20px',
-      fontSize: '14px',
-      border: '1px solid #ffeeba',
-    },
-  },
-  recommendations: {
-    listStyleType: 'disc',
-    paddingLeft: '20px',
-    color: '#495057',
-    lineHeight: '1.6',
-  },
-  buttonGroup: {
-    display: 'flex',
-    gap: '10px',
-    marginTop: '30px',
-  },
-  button: {
-    primary: {
-      flex: 1,
-      padding: '12px',
-      backgroundColor: '#007bff',
-      color: 'white',
-      border: 'none',
-      borderRadius: '6px',
-      fontSize: '14px',
-      fontWeight: '600',
-      cursor: 'pointer',
-    },
-    secondary: {
-      flex: 1,
-      padding: '12px',
-      backgroundColor: '#6c757d',
-      color: 'white',
-      border: 'none',
-      borderRadius: '6px',
-      fontSize: '14px',
-      fontWeight: '600',
-      cursor: 'pointer',
-    },
-  },
 };
 
 export default ApplyJob;

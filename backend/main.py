@@ -1,36 +1,41 @@
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 from datetime import timedelta, datetime
-from typing import List, Optional
+from typing import Optional
 from pydantic import BaseModel, EmailStr
+import os, json, re, uuid
+from dotenv import load_dotenv
+from groq import Groq
+from passlib.context import CryptContext
+from jose import jwt, JWTError
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+
+from routes.email_service import send_interview_email, send_shortlist_email
+from threading import Thread
+from typing import Optional
 
 from database import engine, get_db, Base
-from models import User, UserRole, Job, JobStatus, JobType
+from models import User, UserRole, Job, JobStatus, JobType, Application, ApplicationStatus
 
-from groq import Groq
-
-import os
-from dotenv import load_dotenv
-import json
-
-# Load environment variables
 load_dotenv()
 
-# Configure Groq
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-
 if not GROQ_API_KEY:
     raise ValueError("GROQ_API_KEY not found in .env file")
 
 client = Groq(api_key=GROQ_API_KEY)
 
-# Create tables
 Base.metadata.create_all(bind=engine)
+
+UPLOAD_DIR = "uploads/resumes"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 app = FastAPI(title="AI Recruitment Platform")
 
-# CORS
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -39,17 +44,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Auth Config
 SECRET_KEY = os.getenv("SECRET_KEY", "fallback-secret")
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 30))
 
-from passlib.context import CryptContext
-from jose import jwt, JWTError
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto", bcrypt__rounds=4 )
 security = HTTPBearer()
+
 
 # ================= Pydantic Models =================
 
@@ -84,6 +85,13 @@ class JobGenerateRequest(BaseModel):
     title: str
     company: Optional[str] = "our company"
 
+
+class StatusUpdate(BaseModel):
+    status: str
+    interview_date: Optional[str] = None
+    interview_time: Optional[str] = None
+    interview_notes: Optional[str] = None
+
 # ================= Auth Helpers =================
 
 def verify_password(plain_password, hashed_password):
@@ -109,17 +117,139 @@ def get_current_user(
             raise HTTPException(status_code=401, detail="Invalid token")
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid token")
-
     user = db.query(User).filter(User.email == email).first()
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
-
     return user
 
 def get_current_hr_user(current_user: User = Depends(get_current_user)):
     if current_user.role.value != "hr":
         raise HTTPException(status_code=403, detail="HR access required")
     return current_user
+
+def get_current_candidate(current_user: User = Depends(get_current_user)):
+    if current_user.role.value != "candidate":
+        raise HTTPException(status_code=403, detail="Candidate access required")
+    return current_user
+
+
+# ================= Internal Utilities =================
+
+def clean_json_string(s):
+    """Strip literal newlines/tabs inside JSON string values so json.loads works."""
+    result = []
+    inside_string = False
+    i = 0
+    while i < len(s):
+        c = s[i]
+        if c == '"' and (i == 0 or s[i - 1] != '\\'):
+            inside_string = not inside_string
+            result.append(c)
+        elif inside_string and c in ('\n', '\r', '\t'):
+            result.append(' ')
+        else:
+            result.append(c)
+        i += 1
+    return ''.join(result)
+
+
+def extract_text_from_pdf(file_path: str) -> str:
+    """Extract plain text from a PDF resume."""
+    text = ""
+    try:
+        import PyPDF2
+        with open(file_path, 'rb') as f:
+            reader = PyPDF2.PdfReader(f)
+            for page in reader.pages:
+                t = page.extract_text()
+                if t:
+                    text += t + "\n"
+    except ImportError:
+        print("PyPDF2 not installed. Run: pip install PyPDF2 --break-system-packages")
+    except Exception as e:
+        print(f"PDF extraction error: {e}")
+    return text
+
+
+def calculate_ats_score(resume_text: str, job: Job) -> dict:
+    """Keyword + skill based ATS scoring — no external NLP libraries needed."""
+    stop_words = {
+        'i','me','my','we','our','you','your','he','him','his','she','her','it','its',
+        'they','them','their','what','which','who','this','that','these','those','am',
+        'is','are','was','were','be','been','being','have','has','had','do','does','did',
+        'a','an','the','and','but','if','or','as','of','at','by','for','with','about',
+        'into','through','to','from','in','out','on','off','then','here','there','when',
+        'where','how','all','any','both','each','more','most','other','some','no','not',
+        'only','same','so','than','too','very','can','will','just','should','now'
+    }
+    common_skills = [
+        'python','java','javascript','react','angular','vue','node','express','django',
+        'flask','spring','c++','c#','aws','azure','gcp','docker','kubernetes','sql',
+        'mongodb','postgresql','mysql','redis','git','html','css','typescript','php',
+        'ruby','swift','kotlin','machine learning','ai','data science','tensorflow',
+        'pytorch','excel','powerpoint','agile','jira','linux','rest','api'
+    ]
+
+    def get_keywords(text):
+        words = re.findall(r'\b[a-zA-Z]{3,}\b', text.lower())
+        return set(w for w in words if w not in stop_words)
+
+    def get_skills(text):
+        t = text.lower()
+        return set(s for s in common_skills if s in t)
+
+    def get_experience(text):
+        for p in [r'(\d+)\+?\s*years?\s*(?:of\s*)?experience', r'experience\s*(?:of\s*)?(\d+)\+?\s*years?']:
+            m = re.findall(p, text.lower())
+            if m:
+                try: return int(m[0])
+                except: pass
+        return 0
+
+    job_text = f"{job.title} {job.requirements} {job.responsibilities} {job.description} {job.experience_required}"
+
+    resume_kw = get_keywords(resume_text)
+    job_kw    = get_keywords(job_text)
+    resume_sk = get_skills(resume_text)
+    job_sk    = get_skills(job_text)
+
+    matched_kw = resume_kw & job_kw
+    matched_sk = resume_sk & job_sk
+    missing_sk = job_sk - resume_sk
+
+    kw_score   = (len(matched_kw) / max(len(job_kw), 1)) * 100
+    sk_score   = (len(matched_sk) / max(len(job_sk), 1)) * 100 if job_sk else 50
+    resume_exp = get_experience(resume_text)
+    job_exp    = get_experience(job_text)
+    exp_score  = min(100, (resume_exp / max(job_exp, 1)) * 100) if job_exp > 0 else 50
+
+    overall = round(kw_score * 0.3 + sk_score * 0.5 + exp_score * 0.2, 2)
+
+    recs = []
+    if missing_sk:
+        recs.append(f"Add these skills: {', '.join(list(missing_sk)[:5])}")
+    if exp_score < 70:
+        recs.append("Highlight your relevant experience more clearly")
+    if sk_score < 50:
+        recs.append("Tailor your resume to match the job requirements")
+
+    feedback = (
+        f"Skills Match: {round(sk_score, 1)}% | "
+        f"Keyword Match: {round(kw_score, 1)}% | "
+        f"Experience Match: {round(exp_score, 1)}% | "
+        f"Matched Skills: {', '.join(matched_sk) if matched_sk else 'None'} | "
+        f"Missing Skills: {', '.join(missing_sk) if missing_sk else 'None'} | "
+        f"Tips: {'; '.join(recs) if recs else 'Good match!'}"
+    )
+
+    return {
+        "ats_score": overall,
+        "ats_feedback": feedback,
+        "matched_skills": list(matched_sk),
+        "missing_skills": list(missing_sk),
+        "recommendations": recs,
+    }
+
 
 # ================= Root =================
 
@@ -131,13 +261,13 @@ def read_root():
         "groq_configured": bool(GROQ_API_KEY)
     }
 
+
 # ================= Auth Routes =================
 
 @app.post("/api/auth/register", response_model=Token)
 def register(user_data: UserRegister, db: Session = Depends(get_db)):
     if db.query(User).filter(User.email == user_data.email).first():
         raise HTTPException(status_code=400, detail="Email already registered")
-
     new_user = User(
         email=user_data.email,
         full_name=user_data.full_name,
@@ -145,225 +275,357 @@ def register(user_data: UserRegister, db: Session = Depends(get_db)):
         role=user_data.role,
         phone=user_data.phone
     )
-
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
-
     token = create_access_token({"sub": new_user.email})
     return {
-        "access_token": token,
-        "token_type": "bearer",
-        "user": {
-            "id": new_user.id,
-            "email": new_user.email,
-            "full_name": new_user.full_name,
-            "role": new_user.role.value
-        }
+        "access_token": token, "token_type": "bearer",
+        "user": {"id": new_user.id, "email": new_user.email,
+                 "full_name": new_user.full_name, "role": new_user.role.value}
     }
 
 @app.post("/api/auth/login", response_model=Token)
 def login(user_data: UserLogin, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == user_data.email).first()
-
     if not user or not verify_password(user_data.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid credentials")
-
     token = create_access_token({"sub": user.email})
     return {
-        "access_token": token,
-        "token_type": "bearer",
-        "user": {
-            "id": user.id,
-            "email": user.email,
-            "full_name": user.full_name,
-            "role": user.role.value
-        }
+        "access_token": token, "token_type": "bearer",
+        "user": {"id": user.id, "email": user.email,
+                 "full_name": user.full_name, "role": user.role.value}
     }
 
+
 # ================= AI JOB GENERATION =================
-# ⚠️⚠️⚠️ AI FEATURE - NOT TOUCHED ⚠️⚠️⚠️
+
 @app.post("/api/jobs/generate")
 def generate_job_content(
     request: JobGenerateRequest,
     current_user: User = Depends(get_current_hr_user)
 ):
     try:
-        prompt = f"""
-Generate a professional job description for a {request.title} position at {request.company}.
-
-Return ONLY valid JSON in this format:
-
-{{
-  "description": "2-3 paragraphs",
-  "requirements": "• Requirement 1\\n• Requirement 2",
-  "responsibilities": "• Responsibility 1\\n• Responsibility 2"
-}}
-"""
-
-        response = client.chat.completions.create(
-            model="llama-3.1-8b-instant",
-            messages=[
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.3
+        prompt = (
+            f"Generate a job description for a {request.title} at {request.company}. "
+            "Return only a JSON object with exactly these three keys: description, requirements, responsibilities. "
+            "Use plain text only. No special characters. No line breaks inside values. Keep it concise."
         )
-
+        response = client.chat.completions.create(
+            model="llama-3.1-8b-instant",          # fastest Groq model
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a JSON generator. Output only a single valid JSON object. No markdown. No code blocks. No newlines inside string values. No special characters. Be concise."
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            temperature=0.1,
+            max_tokens=500                 # limit output size for speed
+        )
         raw = response.choices[0].message.content.strip()
+        print("Raw AI response:", raw)
 
-        # Extract JSON safely
+        raw = re.sub(r"```json|```", "", raw).strip()
         start = raw.find("{")
         end = raw.rfind("}") + 1
+        if start == -1 or end == 0:
+            raise ValueError("No JSON found in AI response")
 
-        if start == -1 or end == -1:
-            raise ValueError("Invalid JSON response from AI")
+        cleaned = clean_json_string(raw[start:end])
+        parsed = json.loads(cleaned)
+        return {
+            "description":      parsed.get("description", ""),
+            "requirements":     parsed.get("requirements", ""),
+            "responsibilities": parsed.get("responsibilities", "")
+        }
 
-        clean_json = raw[start:end]
-
-        return json.loads(clean_json)
-
+    except json.JSONDecodeError as e:
+        print("JSON Error:", str(e))
+        # Fallback so the frontend never crashes
+        return {
+            "description": f"We are looking for a talented {request.title} to join {request.company}.",
+            "requirements": "Bachelor's degree in a relevant field. 2+ years of experience. Strong communication skills.",
+            "responsibilities": "Collaborate with teams. Deliver quality work. Report progress to management."
+        }
     except Exception as e:
         print("AI Error:", str(e))
         raise HTTPException(status_code=500, detail=str(e))
 
-# ================= FIXED JOB ROUTES =================
+
+# ================= JOB ROUTES =================
 
 @app.get("/api/jobs/")
-def get_jobs(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """
-    Get jobs based on user role:
-    - HR: sees only their posted jobs
-    - Candidate: sees all OPEN jobs
-    """
-    # For HR: show their posted jobs only
+def get_jobs(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     if current_user.role == UserRole.HR:
         jobs = db.query(Job).filter(Job.recruiter_id == current_user.id).order_by(Job.created_at.desc()).all()
     else:
-        # For candidates: show all open jobs
         jobs = db.query(Job).filter(Job.status == JobStatus.OPEN).order_by(Job.created_at.desc()).all()
 
     result = []
     for job in jobs:
-        # Get the recruiter info for display
         recruiter = db.query(User).filter(User.id == job.recruiter_id).first()
-        job_dict = {
-            "id": job.id,
-            "title": job.title,
-            "company": job.company,
-            "location": job.location,
-            "job_type": job.job_type.value,
-            "experience_required": job.experience_required,
-            "salary_range": job.salary_range,
-            "description": job.description,
-            "requirements": job.requirements,
-            "responsibilities": job.responsibilities,
-            "status": job.status.value,
+        already_applied = False
+        if current_user.role == UserRole.CANDIDATE:
+            already_applied = db.query(Application).filter(
+                Application.candidate_id == current_user.id,
+                Application.job_id == job.id
+            ).first() is not None
+
+        result.append({
+            "id": job.id, "title": job.title, "company": job.company,
+            "location": job.location, "job_type": job.job_type.value,
+            "experience_required": job.experience_required, "salary_range": job.salary_range,
+            "description": job.description, "requirements": job.requirements,
+            "responsibilities": job.responsibilities, "status": job.status.value,
             "created_at": job.created_at.isoformat() if job.created_at else None,
             "recruiter_name": recruiter.full_name if recruiter else "Unknown",
-            "recruiter_id": job.recruiter_id
-        }
-        result.append(job_dict)
-
+            "recruiter_id": job.recruiter_id,
+            "already_applied": already_applied
+        })
     return result
 
+
 @app.post("/api/jobs/")
-def create_job(
-    job_data: JobCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_hr_user)
-):
-    """
-    Create a new job posting
-    """
+def create_job(job_data: JobCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_hr_user)):
     try:
-        # Validate job_type
-        try:
-            job_type_enum = JobType(job_data.job_type)
-        except ValueError:
-            raise HTTPException(status_code=400, detail=f"Invalid job type. Must be one of: {[jt.value for jt in JobType]}")
-
-        # Create new job with CORRECT field names
+        job_type_enum = JobType(job_data.job_type)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid job type. Must be one of: {[jt.value for jt in JobType]}")
+    try:
         new_job = Job(
-            title=job_data.title,
-            company=job_data.company,
-            location=job_data.location,
-            job_type=job_type_enum,
-            experience_required=job_data.experience_required,
-            salary_range=job_data.salary_range,
-            description=job_data.description,
-            requirements=job_data.requirements,
-            responsibilities=job_data.responsibilities,
-            status=JobStatus.OPEN,  # FIXED: Use OPEN instead of ACTIVE
-            recruiter_id=current_user.id,  # FIXED: Use recruiter_id not posted_by
-            created_at=datetime.utcnow()
+            title=job_data.title, company=job_data.company, location=job_data.location,
+            job_type=job_type_enum, experience_required=job_data.experience_required,
+            salary_range=job_data.salary_range, description=job_data.description,
+            requirements=job_data.requirements, responsibilities=job_data.responsibilities,
+            status=JobStatus.OPEN, recruiter_id=current_user.id, created_at=datetime.utcnow()
         )
-
         db.add(new_job)
         db.commit()
         db.refresh(new_job)
-
-        # Return the created job with full details
         return {
             "message": "Job posted successfully",
             "job": {
-                "id": new_job.id,
-                "title": new_job.title,
-                "company": new_job.company,
-                "location": new_job.location,
-                "job_type": new_job.job_type.value,
-                "experience_required": new_job.experience_required,
-                "salary_range": new_job.salary_range,
-                "description": new_job.description,
-                "requirements": new_job.requirements,
-                "responsibilities": new_job.responsibilities,
-                "status": new_job.status.value,
+                "id": new_job.id, "title": new_job.title, "company": new_job.company,
+                "location": new_job.location, "job_type": new_job.job_type.value,
+                "experience_required": new_job.experience_required, "salary_range": new_job.salary_range,
+                "description": new_job.description, "requirements": new_job.requirements,
+                "responsibilities": new_job.responsibilities, "status": new_job.status.value,
                 "created_at": new_job.created_at.isoformat() if new_job.created_at else None,
-                "recruiter_name": current_user.full_name,
-                "recruiter_id": new_job.recruiter_id
+                "recruiter_name": current_user.full_name, "recruiter_id": new_job.recruiter_id
             }
         }
     except Exception as e:
-        print(f"Error creating job: {str(e)}")
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to create job: {str(e)}")
 
-# Optional: Add a job detail endpoint
+
 @app.get("/api/jobs/{job_id}")
-def get_job_detail(
-    job_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """Get detailed information about a specific job"""
+def get_job_detail(job_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     job = db.query(Job).filter(Job.id == job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    
-    # Check permissions
     if current_user.role == UserRole.HR and job.recruiter_id != current_user.id:
-        raise HTTPException(status_code=403, detail="You don't have permission to view this job")
-    
+        raise HTTPException(status_code=403, detail="Permission denied")
     if current_user.role == UserRole.CANDIDATE and job.status != JobStatus.OPEN:
-        raise HTTPException(status_code=403, detail="This job is not available")
-    
+        raise HTTPException(status_code=403, detail="Job not available")
     recruiter = db.query(User).filter(User.id == job.recruiter_id).first()
-    
     return {
-        "id": job.id,
-        "title": job.title,
-        "company": job.company,
-        "location": job.location,
-        "job_type": job.job_type.value,
-        "experience_required": job.experience_required,
-        "salary_range": job.salary_range,
-        "description": job.description,
-        "requirements": job.requirements,
-        "responsibilities": job.responsibilities,
-        "status": job.status.value,
+        "id": job.id, "title": job.title, "company": job.company,
+        "location": job.location, "job_type": job.job_type.value,
+        "experience_required": job.experience_required, "salary_range": job.salary_range,
+        "description": job.description, "requirements": job.requirements,
+        "responsibilities": job.responsibilities, "status": job.status.value,
         "created_at": job.created_at.isoformat() if job.created_at else None,
         "recruiter_name": recruiter.full_name if recruiter else "Unknown",
         "recruiter_id": job.recruiter_id
-    } 
+    }
+
+
+# ================= ATS APPLICATION ROUTES =================
+
+@app.post("/api/applications/apply")
+async def apply_for_job(
+    job_id: int = Form(...),
+    cover_letter: Optional[str] = Form(None),
+    resume: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_candidate)
+):
+    """Candidate uploads resume and applies. ATS score is calculated instantly."""
+    job = db.query(Job).filter(Job.id == job_id, Job.status == JobStatus.OPEN).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found or already closed")
+
+    existing = db.query(Application).filter(
+        Application.candidate_id == current_user.id,
+        Application.job_id == job_id
+    ).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="You have already applied for this job")
+
+    if not resume.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF resumes are accepted")
+
+    filename  = f"{current_user.id}_{job_id}_{uuid.uuid4().hex[:8]}.pdf"
+    file_path = os.path.join(UPLOAD_DIR, filename)
+    content   = await resume.read()
+    with open(file_path, "wb") as f:
+        f.write(content)
+
+    resume_text = extract_text_from_pdf(file_path)
+    if not resume_text.strip():
+        resume_text = f"Resume uploaded by {current_user.full_name}"
+
+    ats_result = calculate_ats_score(resume_text, job)
+
+    application = Application(
+        candidate_id=current_user.id,
+        job_id=job_id,
+        resume_path=file_path,
+        cover_letter=cover_letter,
+        status=ApplicationStatus.PENDING,
+        ats_score=ats_result["ats_score"],
+        ats_feedback=ats_result["ats_feedback"],
+        applied_at=datetime.utcnow()
+    )
+    db.add(application)
+    db.commit()
+    db.refresh(application)
+
+    return {
+        "message": "Application submitted successfully!",
+        "application_id": application.id,
+        "ats_score": application.ats_score,
+        "ats_feedback": application.ats_feedback,
+        "matched_skills": ats_result["matched_skills"],
+        "missing_skills": ats_result["missing_skills"],
+        "recommendations": ats_result["recommendations"],
+        "status": application.status.value
+    }
+
+
+@app.get("/api/applications/my")
+def get_my_applications(db: Session = Depends(get_db), current_user: User = Depends(get_current_candidate)):
+    """Candidate views all their applications with ATS scores and pipeline status."""
+    apps = db.query(Application).filter(
+        Application.candidate_id == current_user.id
+    ).order_by(Application.applied_at.desc()).all()
+
+    result = []
+    for app in apps:
+        job = db.query(Job).filter(Job.id == app.job_id).first()
+        result.append({
+            "application_id": app.id,
+            "job_id":         app.job_id,
+            "job_title":      job.title      if job else "Unknown",
+            "company":        job.company    if job else "Unknown",
+            "location":       job.location   if job else "Unknown",
+            "job_type":       job.job_type.value if job else "Unknown",
+            "applied_at":     app.applied_at.isoformat() if app.applied_at else None,
+            "status":         app.status.value,
+            "ats_score":      app.ats_score,
+            "ats_feedback":   app.ats_feedback,
+        })
+    return result
+
+
+@app.get("/api/applications/job/{job_id}")
+def get_job_applicants(job_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_hr_user)):
+    """HR views all applicants sorted by ATS score (highest first)."""
+    job = db.query(Job).filter(Job.id == job_id, Job.recruiter_id == current_user.id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found or access denied")
+
+    apps = db.query(Application).filter(
+        Application.job_id == job_id
+    ).order_by(Application.ats_score.desc()).all()
+
+    result = []
+    for app in apps:
+        candidate = db.query(User).filter(User.id == app.candidate_id).first()
+        result.append({
+            "application_id":   app.id,
+            "candidate_id":     app.candidate_id,
+            "candidate_name":   candidate.full_name if candidate else "Unknown",
+            "candidate_email":  candidate.email     if candidate else "Unknown",
+            "candidate_phone":  candidate.phone     if candidate else None,
+            "applied_at":       app.applied_at.isoformat() if app.applied_at else None,
+            "status":           app.status.value,
+            "ats_score":        app.ats_score,
+            "ats_feedback":     app.ats_feedback,
+            "resume_url":       f"http://localhost:8000/{app.resume_path}",
+            "cover_letter":     app.cover_letter,
+        })
+    return result
+
+
+@app.patch("/api/applications/{application_id}/status")
+def update_application_status(
+    application_id: int,
+    status_data: StatusUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_hr_user)
+):
+    """HR updates pipeline status. Sends email to candidate on shortlist or interview."""
+    application = db.query(Application).filter(Application.id == application_id).first()
+    if not application:
+        raise HTTPException(status_code=404, detail="Application not found")
+
+    job = db.query(Job).filter(
+        Job.id == application.job_id,
+        Job.recruiter_id == current_user.id
+    ).first()
+    if not job:
+        raise HTTPException(status_code=403, detail="Permission denied")
+
+    try:
+        new_status = ApplicationStatus(status_data.status)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid status. Must be one of: {[s.value for s in ApplicationStatus]}"
+        )
+
+    # Validate interview fields if status is interview
+    if new_status == ApplicationStatus.INTERVIEW:
+        if not status_data.interview_date or not status_data.interview_time:
+            raise HTTPException(
+                status_code=400,
+                detail="interview_date and interview_time are required when setting status to interview"
+            )
+
+    application.status     = new_status
+    application.updated_at = datetime.utcnow()
+    db.commit()
+
+    # Send email in background thread so API responds instantly
+    candidate = db.query(User).filter(User.id == application.candidate_id).first()
+    if candidate:
+        if new_status == ApplicationStatus.SHORTLISTED:
+            Thread(target=send_shortlist_email, args=(
+                candidate.email,
+                candidate.full_name,
+                job.title,
+                job.company
+            )).start()
+
+        elif new_status == ApplicationStatus.INTERVIEW:
+            Thread(target=send_interview_email, args=(
+                candidate.email,
+                candidate.full_name,
+                job.title,
+                job.company,
+                status_data.interview_date,
+                status_data.interview_time,
+                status_data.interview_notes or ""
+            )).start()
+
+    return {
+        "message": f"Status updated to {new_status.value}",
+        "status": new_status.value,
+        "email_sent": candidate is not None and new_status in [ApplicationStatus.SHORTLISTED, ApplicationStatus.INTERVIEW]
+    }
