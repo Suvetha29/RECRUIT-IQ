@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Enum as SQLEnum, Text, ForeignKey, DateTime, Float
+from sqlalchemy import Column, Integer, String, Enum as SQLEnum, Text, ForeignKey, DateTime, Float, Boolean, JSON
 from sqlalchemy.orm import relationship
 from database import Base
 import enum
@@ -57,53 +57,98 @@ class Job(Base):
 
     recruiter = relationship("User", back_populates="jobs")
     applications = relationship("Application", back_populates="job")
+    assessment = relationship("Assessment", back_populates="job", uselist=False)
 
 
-# ─────────────────────────────────────────────────────────────
-#  APPLICATION STATUS
-#  Tracks the candidate's stage in the hiring pipeline.
-#
-#  Flow:
-#    PENDING → UNDER_REVIEW → SHORTLISTED → INTERVIEW → HIRED
-#                                        ↘ REJECTED
-# ─────────────────────────────────────────────────────────────
 class ApplicationStatus(enum.Enum):
-    PENDING      = "pending"       # Submitted, not yet reviewed
-    UNDER_REVIEW = "under_review"  # HR is reviewing
-    SHORTLISTED  = "shortlisted"   # Passed initial screening
-    INTERVIEW    = "interview"     # Interview scheduled
-    REJECTED     = "rejected"      # Not moving forward
-    HIRED        = "hired"         # Offer accepted
+    PENDING      = "pending"
+    UNDER_REVIEW = "under_review"
+    SHORTLISTED  = "shortlisted"
+    INTERVIEW    = "interview"
+    ASSESSMENT   = "assessment"
+    REJECTED     = "rejected"
+    HIRED        = "hired"
 
 
-# ─────────────────────────────────────────────────────────────
-#  APPLICATIONS TABLE
-#
-#  One row = one candidate applying to one job.
-#
-#  candidate_id  → FK to users (the candidate)
-#  job_id        → FK to jobs  (the job they applied to)
-#  resume_path   → local path: uploads/resumes/<filename>
-#  cover_letter  → optional text written by candidate
-#  status        → current pipeline stage (ApplicationStatus)
-#  ats_score     → AI match score 0–100
-#  ats_feedback  → AI explanation (strengths, gaps)
-#  applied_at    → when the application was submitted
-#  updated_at    → when HR last changed the status
-# ─────────────────────────────────────────────────────────────
 class Application(Base):
     __tablename__ = "applications"
 
-    id           = Column(Integer, primary_key=True, index=True)
-    candidate_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    job_id       = Column(Integer, ForeignKey("jobs.id"),  nullable=False)
-    resume_path  = Column(String,  nullable=False)
-    cover_letter = Column(Text,    nullable=True)
-    status       = Column(SQLEnum(ApplicationStatus), default=ApplicationStatus.PENDING)
-    ats_score    = Column(Float,   nullable=True)
-    ats_feedback = Column(Text,    nullable=True)
-    applied_at   = Column(DateTime, default=datetime.utcnow)
-    updated_at   = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    id             = Column(Integer, primary_key=True, index=True)
+    candidate_id   = Column(Integer, ForeignKey("users.id"), nullable=False)
+    job_id         = Column(Integer, ForeignKey("jobs.id"),  nullable=False)
+    resume_path    = Column(String,  nullable=False)
+    cover_letter   = Column(Text,    nullable=True)
+    status         = Column(SQLEnum(ApplicationStatus), default=ApplicationStatus.PENDING)
+    ats_score      = Column(Float,   nullable=True)
+    ats_feedback   = Column(Text,    nullable=True)
 
-    candidate = relationship("User", back_populates="applications")
-    job       = relationship("Job",  back_populates="applications")
+    # ── Interview fields ──
+    interview_date  = Column(String,  nullable=True)
+    interview_time  = Column(String,  nullable=True)
+    interview_notes = Column(Text,    nullable=True)
+    meet_link       = Column(String,  nullable=True)
+
+    # ── AI Evaluation fields ──
+    recording_path    = Column(String, nullable=True)
+    transcript        = Column(Text,   nullable=True)
+    ai_score          = Column(Float,  nullable=True)
+    ai_recommendation = Column(Text,   nullable=True)
+
+    applied_at  = Column(DateTime, default=datetime.utcnow)
+    updated_at  = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    candidate         = relationship("User", back_populates="applications")
+    job               = relationship("Job",  back_populates="applications")
+    assessment_result = relationship("AssessmentResult", back_populates="application", uselist=False)
+
+
+# ─────────────────────────────────────────────
+# ASSESSMENT TABLE
+# HR creates MCQ questions per job
+# ─────────────────────────────────────────────
+class Assessment(Base):
+    __tablename__ = "assessments"
+
+    id            = Column(Integer, primary_key=True, index=True)
+    job_id        = Column(Integer, ForeignKey("jobs.id"), nullable=False, unique=True)
+    questions     = Column(JSON, nullable=False)
+    time_limit    = Column(Integer, default=20)   # minutes
+    passing_score = Column(Float, default=60.0)   # percentage
+    created_at    = Column(DateTime, default=datetime.utcnow)
+
+    job     = relationship("Job", back_populates="assessment")
+    results = relationship("AssessmentResult", back_populates="assessment")
+
+
+# ─────────────────────────────────────────────
+# ASSESSMENT RESULT TABLE
+# Candidate's answers and score
+# ─────────────────────────────────────────────
+class AssessmentResult(Base):
+    __tablename__ = "assessment_results"
+
+    id             = Column(Integer, primary_key=True, index=True)
+    application_id = Column(Integer, ForeignKey("applications.id"), nullable=False)
+    assessment_id  = Column(Integer, ForeignKey("assessments.id"),  nullable=False)
+    answers        = Column(JSON,    nullable=False)
+    score          = Column(Float,   nullable=True)
+    passed         = Column(Boolean, default=False)
+    completed_at   = Column(DateTime, default=datetime.utcnow)
+
+    application = relationship("Application", back_populates="assessment_result")
+    assessment  = relationship("Assessment",  back_populates="results")
+
+# ─────────────────────────────────────────────
+# NOTIFICATION TABLE
+# ─────────────────────────────────────────────
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id         = Column(Integer, primary_key=True, index=True)
+    user_id    = Column(Integer, ForeignKey("users.id"), nullable=False)
+    title      = Column(String, nullable=False)
+    message    = Column(Text, nullable=False)
+    is_read    = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User") 

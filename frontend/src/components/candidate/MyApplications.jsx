@@ -130,6 +130,62 @@ const MyApplications = () => {
                   </div>
                 )}
 
+
+
+{/* Interview Details */}
+{app.meet_link && (
+  <div className="mt-4 pt-4 border-t border-slate-100">
+    <p className="text-xs font-semibold text-slate-500 mb-3">🎥 Interview Details</p>
+    <div className="bg-blue-50 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div>
+        <p className="text-sm font-semibold text-slate-800">
+          📅 {app.interview_date} &nbsp;⏰ {app.interview_time}
+        </p>
+        <p className="text-xs text-slate-500 mt-1">Virtual Interview via Jitsi Meet</p>
+      </div>
+      <button
+        onClick={() => {
+          const room = app.meet_link.replace('https://meet.jit.si/', '');
+          window.open(`/interview/${room}`, '_blank');
+        }}
+        className="px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-xl hover:bg-blue-700"
+      >
+        🎥 Join Interview
+      </button>
+    </div>
+  </div>
+)}
+
+{/* Assessment Button */}
+{app.status === 'shortlisted' && !app.assessment_result && (
+  <div className="mt-4 pt-4 border-t border-slate-100">
+    <div className="bg-amber-50 rounded-xl p-4 flex items-center justify-between">
+      <div>
+        <p className="text-sm font-semibold text-slate-800">📝 Skill Assessment Pending</p>
+        <p className="text-xs text-slate-500 mt-1">Complete assessment to proceed to interview</p>
+      </div>
+      <button
+        onClick={() => navigate(`/assessment/${app.job_id}/${app.application_id}`)}
+        className="px-4 py-2 bg-amber-500 text-white text-sm font-semibold rounded-xl hover:bg-amber-600"
+      >
+        Take Assessment →
+      </button>
+    </div>
+  </div>
+)}
+
+{/* Assessment Result */}
+{app.assessment_result && (
+  <div className="mt-4 pt-4 border-t border-slate-100">
+    <p className="text-xs font-semibold text-slate-500 mb-2">📊 Assessment Result</p>
+    <div className={`rounded-xl p-3 ${app.assessment_result.passed ? 'bg-green-50' : 'bg-red-50'}`}>
+      <p className={`text-sm font-bold ${app.assessment_result.passed ? 'text-green-700' : 'text-red-700'}`}>
+        {app.assessment_result.passed ? '✅ Passed' : '❌ Not Passed'} — Score: {app.assessment_result.score}%
+      </p>
+    </div>
+  </div>
+)}
+
                 {/* Status Timeline */}
                 <div className="mt-4 pt-4 border-t border-slate-100">
                   <p className="text-xs font-semibold text-slate-500 mb-3">Pipeline Stage</p>

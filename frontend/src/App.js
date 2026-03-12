@@ -9,6 +9,9 @@ import JobDetail from './components/JobDetail';
 import EditJob from './components/EditJob';
 import MyApplications from './components/candidate/MyApplications';
 import HRApplications from './components/hr/HRApplications';
+import Assessment from './components/assessment/Assessment';
+import InterviewRoom from './components/interview/InterviewRoom';
+import HRAssessment from './components/hr/HRAssessment';
 
 function App() {
   return (
@@ -26,6 +29,10 @@ function App() {
         {/* ATS Routes */}
         <Route path="/my-applications" element={<MyApplications />} />
         <Route path="/hr/applications/:jobId" element={<HRApplications />} />
+        {/* Assesement and interview Routes */}
+        <Route path="/assessment/:jobId/:applicationId" element={<Assessment />} />
+        <Route path="/interview/:roomName" element={<InterviewRoom />} />
+        <Route path="/hr/assessment/:jobId" element={<HRAssessment />} />
       </Routes>
     </Router>
   );

@@ -1,5 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import NotificationBell from './common/NotificationBell';
+
+
 
 function Dashboard() {
   const navigate = useNavigate();
@@ -44,7 +47,10 @@ function Dashboard() {
     <div style={styles.container}>
       <div style={styles.header}>
         <h2>Dashboard</h2>
+        <div style={{display:'flex', alignItems:'center', gap:'16px'}}>
+        <NotificationBell />
         <button style={styles.logoutBtn} onClick={handleLogout}>Logout</button>
+      </div>
       </div>
 
       <div style={styles.content}>

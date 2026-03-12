@@ -8,16 +8,20 @@ from pydantic import BaseModel, EmailStr
 import os, json, re, uuid
 from dotenv import load_dotenv
 from groq import Groq
-from passlib.context import CryptContext
+
 from jose import jwt, JWTError
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+import bcrypt
 
-from routes.email_service import send_interview_email, send_shortlist_email
+from routes.assessment import router as assessment_router
+from routes.evaluation import router as evaluation_router
+from routes.email_service import send_interview_email, send_shortlist_email, send_hired_email, send_rejected_email
+
 from threading import Thread
-from typing import Optional
 
 from database import engine, get_db, Base
 from models import User, UserRole, Job, JobStatus, JobType, Application, ApplicationStatus
+from routes.notifications import router as notifications_router
 
 load_dotenv()
 
@@ -34,6 +38,10 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 app = FastAPI(title="AI Recruitment Platform")
 
+app.include_router(assessment_router)
+app.include_router(evaluation_router)
+app.include_router(notifications_router)
+
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 app.add_middleware(
@@ -47,9 +55,6 @@ app.add_middleware(
 SECRET_KEY = os.getenv("SECRET_KEY", "fallback-secret")
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 30))
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto", bcrypt__rounds=4 )
-security = HTTPBearer()
 
 
 # ================= Pydantic Models =================
@@ -85,20 +90,20 @@ class JobGenerateRequest(BaseModel):
     title: str
     company: Optional[str] = "our company"
 
-
 class StatusUpdate(BaseModel):
     status: str
     interview_date: Optional[str] = None
     interview_time: Optional[str] = None
     interview_notes: Optional[str] = None
 
+
 # ================= Auth Helpers =================
 
-def verify_password(plain_password, hashed_password):
-    return pwd_context.verify(plain_password, hashed_password)
+def hash_password(password: str) -> str:
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
-def get_password_hash(password):
-    return pwd_context.hash(password)
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    return bcrypt.checkpw(plain_password.encode("utf-8"), hashed_password.encode("utf-8"))
 
 def create_access_token(data: dict):
     to_encode = data.copy()
@@ -106,37 +111,12 @@ def create_access_token(data: dict):
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
-def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: Session = Depends(get_db)
-):
-    try:
-        payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
-        email = payload.get("sub")
-        if email is None:
-            raise HTTPException(status_code=401, detail="Invalid token")
-    except JWTError:
-        raise HTTPException(status_code=401, detail="Invalid token")
-    user = db.query(User).filter(User.email == email).first()
-    if not user:
-        raise HTTPException(status_code=401, detail="User not found")
-    return user
-
-def get_current_hr_user(current_user: User = Depends(get_current_user)):
-    if current_user.role.value != "hr":
-        raise HTTPException(status_code=403, detail="HR access required")
-    return current_user
-
-def get_current_candidate(current_user: User = Depends(get_current_user)):
-    if current_user.role.value != "candidate":
-        raise HTTPException(status_code=403, detail="Candidate access required")
-    return current_user
+from routes.auth_deps import get_current_user, get_current_hr_user, get_current_candidate
 
 
 # ================= Internal Utilities =================
 
 def clean_json_string(s):
-    """Strip literal newlines/tabs inside JSON string values so json.loads works."""
     result = []
     inside_string = False
     i = 0
@@ -154,7 +134,6 @@ def clean_json_string(s):
 
 
 def extract_text_from_pdf(file_path: str) -> str:
-    """Extract plain text from a PDF resume."""
     text = ""
     try:
         import PyPDF2
@@ -165,14 +144,13 @@ def extract_text_from_pdf(file_path: str) -> str:
                 if t:
                     text += t + "\n"
     except ImportError:
-        print("PyPDF2 not installed. Run: pip install PyPDF2 --break-system-packages")
+        print("PyPDF2 not installed.")
     except Exception as e:
         print(f"PDF extraction error: {e}")
     return text
 
 
 def calculate_ats_score(resume_text: str, job: Job) -> dict:
-    """Keyword + skill based ATS scoring — no external NLP libraries needed."""
     stop_words = {
         'i','me','my','we','our','you','your','he','him','his','she','her','it','its',
         'they','them','their','what','which','who','this','that','these','those','am',
@@ -217,8 +195,8 @@ def calculate_ats_score(resume_text: str, job: Job) -> dict:
     matched_sk = resume_sk & job_sk
     missing_sk = job_sk - resume_sk
 
-    kw_score   = (len(matched_kw) / max(len(job_kw), 1)) * 100
-    sk_score   = (len(matched_sk) / max(len(job_sk), 1)) * 100 if job_sk else 50
+    kw_score  = (len(matched_kw) / max(len(job_kw), 1)) * 100
+    sk_score  = (len(matched_sk) / max(len(job_sk), 1)) * 100 if job_sk else 50
     resume_exp = get_experience(resume_text)
     job_exp    = get_experience(job_text)
     exp_score  = min(100, (resume_exp / max(job_exp, 1)) * 100) if job_exp > 0 else 50
@@ -271,7 +249,7 @@ def register(user_data: UserRegister, db: Session = Depends(get_db)):
     new_user = User(
         email=user_data.email,
         full_name=user_data.full_name,
-        hashed_password=get_password_hash(user_data.password),
+        hashed_password=hash_password(user_data.password),
         role=user_data.role,
         phone=user_data.phone
     )
@@ -312,7 +290,7 @@ def generate_job_content(
             "Use plain text only. No special characters. No line breaks inside values. Keep it concise."
         )
         response = client.chat.completions.create(
-            model="llama-3.1-8b-instant",          # fastest Groq model
+            model="llama-3.1-8b-instant",
             messages=[
                 {
                     "role": "system",
@@ -324,7 +302,7 @@ def generate_job_content(
                 }
             ],
             temperature=0.1,
-            max_tokens=500                 # limit output size for speed
+            max_tokens=500
         )
         raw = response.choices[0].message.content.strip()
         print("Raw AI response:", raw)
@@ -345,7 +323,6 @@ def generate_job_content(
 
     except json.JSONDecodeError as e:
         print("JSON Error:", str(e))
-        # Fallback so the frontend never crashes
         return {
             "description": f"We are looking for a talented {request.title} to join {request.company}.",
             "requirements": "Bachelor's degree in a relevant field. 2+ years of experience. Strong communication skills.",
@@ -455,7 +432,6 @@ async def apply_for_job(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_candidate)
 ):
-    """Candidate uploads resume and applies. ATS score is calculated instantly."""
     job = db.query(Job).filter(Job.id == job_id, Job.status == JobStatus.OPEN).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found or already closed")
@@ -510,7 +486,6 @@ async def apply_for_job(
 
 @app.get("/api/applications/my")
 def get_my_applications(db: Session = Depends(get_db), current_user: User = Depends(get_current_candidate)):
-    """Candidate views all their applications with ATS scores and pipeline status."""
     apps = db.query(Application).filter(
         Application.candidate_id == current_user.id
     ).order_by(Application.applied_at.desc()).all()
@@ -519,23 +494,31 @@ def get_my_applications(db: Session = Depends(get_db), current_user: User = Depe
     for app in apps:
         job = db.query(Job).filter(Job.id == app.job_id).first()
         result.append({
-            "application_id": app.id,
-            "job_id":         app.job_id,
-            "job_title":      job.title      if job else "Unknown",
-            "company":        job.company    if job else "Unknown",
-            "location":       job.location   if job else "Unknown",
-            "job_type":       job.job_type.value if job else "Unknown",
-            "applied_at":     app.applied_at.isoformat() if app.applied_at else None,
-            "status":         app.status.value,
-            "ats_score":      app.ats_score,
-            "ats_feedback":   app.ats_feedback,
+            "application_id":    app.id,
+            "job_id":            app.job_id,
+            "job_title":         job.title          if job else "Unknown",
+            "company":           job.company         if job else "Unknown",
+            "location":          job.location        if job else "Unknown",
+            "job_type":          job.job_type.value  if job else "Unknown",
+            "applied_at":        app.applied_at.isoformat() if app.applied_at else None,
+            "status":            app.status.value,
+            "ats_score":         app.ats_score,
+            "ats_feedback":      app.ats_feedback,
+            "interview_date":    app.interview_date,
+            "interview_time":    app.interview_time,
+            "meet_link":         app.meet_link,
+            "ai_score":          app.ai_score,
+            "ai_recommendation": app.ai_recommendation,
+            "assessment_result": {
+                "score":  app.assessment_result.score,
+                "passed": app.assessment_result.passed
+            } if app.assessment_result else None,
         })
     return result
 
 
 @app.get("/api/applications/job/{job_id}")
 def get_job_applicants(job_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_hr_user)):
-    """HR views all applicants sorted by ATS score (highest first)."""
     job = db.query(Job).filter(Job.id == job_id, Job.recruiter_id == current_user.id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found or access denied")
@@ -548,17 +531,26 @@ def get_job_applicants(job_id: int, db: Session = Depends(get_db), current_user:
     for app in apps:
         candidate = db.query(User).filter(User.id == app.candidate_id).first()
         result.append({
-            "application_id":   app.id,
-            "candidate_id":     app.candidate_id,
-            "candidate_name":   candidate.full_name if candidate else "Unknown",
-            "candidate_email":  candidate.email     if candidate else "Unknown",
-            "candidate_phone":  candidate.phone     if candidate else None,
-            "applied_at":       app.applied_at.isoformat() if app.applied_at else None,
-            "status":           app.status.value,
-            "ats_score":        app.ats_score,
-            "ats_feedback":     app.ats_feedback,
-            "resume_url":       f"http://localhost:8000/{app.resume_path}",
-            "cover_letter":     app.cover_letter,
+            "application_id":    app.id,
+            "candidate_id":      app.candidate_id,
+            "candidate_name":    candidate.full_name if candidate else "Unknown",
+            "candidate_email":   candidate.email     if candidate else "Unknown",
+            "candidate_phone":   candidate.phone     if candidate else None,
+            "applied_at":        app.applied_at.isoformat() if app.applied_at else None,
+            "status":            app.status.value,
+            "ats_score":         app.ats_score,
+            "ats_feedback":      app.ats_feedback,
+            "resume_url":        f"http://localhost:8000/{app.resume_path}",
+            "cover_letter":      app.cover_letter,
+            "interview_date":    app.interview_date,
+            "interview_time":    app.interview_time,
+            "meet_link":         app.meet_link,
+            "ai_score":          app.ai_score,
+            "ai_recommendation": app.ai_recommendation,
+            "assessment_result": {
+                "score":  app.assessment_result.score,
+                "passed": app.assessment_result.passed
+            } if app.assessment_result else None,
         })
     return result
 
@@ -570,7 +562,8 @@ def update_application_status(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_hr_user)
 ):
-    """HR updates pipeline status. Sends email to candidate on shortlist or interview."""
+    from routes.notifications import create_notification
+
     application = db.query(Application).filter(Application.id == application_id).first()
     if not application:
         raise HTTPException(status_code=404, detail="Application not found")
@@ -590,42 +583,81 @@ def update_application_status(
             detail=f"Invalid status. Must be one of: {[s.value for s in ApplicationStatus]}"
         )
 
-    # Validate interview fields if status is interview
     if new_status == ApplicationStatus.INTERVIEW:
         if not status_data.interview_date or not status_data.interview_time:
             raise HTTPException(
                 status_code=400,
-                detail="interview_date and interview_time are required when setting status to interview"
+                detail="interview_date and interview_time are required"
             )
 
-    application.status     = new_status
+    application.status = new_status
     application.updated_at = datetime.utcnow()
+
+    # Generate Jitsi meet link when status is interview
+    if new_status == ApplicationStatus.INTERVIEW:
+        room = f"recruitiq-{application.job_id}-{application.candidate_id}-{uuid.uuid4().hex[:8]}"
+        application.meet_link       = f"https://meet.jit.si/{room}"
+        application.interview_date  = status_data.interview_date
+        application.interview_time  = status_data.interview_time
+        application.interview_notes = status_data.interview_notes
+
     db.commit()
 
-    # Send email in background thread so API responds instantly
     candidate = db.query(User).filter(User.id == application.candidate_id).first()
+
     if candidate:
+        # Send emails
         if new_status == ApplicationStatus.SHORTLISTED:
             Thread(target=send_shortlist_email, args=(
-                candidate.email,
-                candidate.full_name,
-                job.title,
-                job.company
+                candidate.email, candidate.full_name, job.title, job.company
             )).start()
 
         elif new_status == ApplicationStatus.INTERVIEW:
             Thread(target=send_interview_email, args=(
-                candidate.email,
-                candidate.full_name,
-                job.title,
-                job.company,
-                status_data.interview_date,
-                status_data.interview_time,
+                candidate.email, candidate.full_name, job.title, job.company,
+                status_data.interview_date, status_data.interview_time,
                 status_data.interview_notes or ""
             )).start()
+
+        elif new_status == ApplicationStatus.HIRED:
+            Thread(target=send_hired_email, args=(
+                candidate.email, candidate.full_name, job.title, job.company
+            )).start()
+
+        elif new_status == ApplicationStatus.REJECTED:
+            Thread(target=send_rejected_email, args=(
+                candidate.email, candidate.full_name, job.title, job.company
+            )).start()
+
+        # In-app notifications
+        if new_status == ApplicationStatus.SHORTLISTED:
+            create_notification(
+                db, candidate.id,
+                "⭐ You've been Shortlisted!",
+                f"Congratulations! You have been shortlisted for {job.title} at {job.company}."
+            )
+        elif new_status == ApplicationStatus.INTERVIEW:
+            create_notification(
+                db, candidate.id,
+                "📅 Interview Scheduled!",
+                f"Your interview for {job.title} at {job.company} is on {status_data.interview_date} at {status_data.interview_time}. Check your email for the Jitsi meet link."
+            )
+        elif new_status == ApplicationStatus.HIRED:
+            create_notification(
+                db, candidate.id,
+                "🎉 Congratulations! You're Hired!",
+                f"You have been selected for {job.title} at {job.company}. HR will contact you soon."
+            )
+        elif new_status == ApplicationStatus.REJECTED:
+            create_notification(
+                db, candidate.id,
+                "❌ Application Update",
+                f"Thank you for applying for {job.title} at {job.company}. Unfortunately you were not selected this time."
+            )
 
     return {
         "message": f"Status updated to {new_status.value}",
         "status": new_status.value,
+        "meet_link": application.meet_link if new_status == ApplicationStatus.INTERVIEW else None,
         "email_sent": candidate is not None and new_status in [ApplicationStatus.SHORTLISTED, ApplicationStatus.INTERVIEW]
     }

@@ -18,6 +18,7 @@ An AI-powered recruitment platform built with FastAPI and React that helps HR pr
 # Backend
 cd backend
 pip install -r requirements.txt
+py -3.11 -m uvicorn main:app --reload
 uvicorn main:app --reload
 
 # Frontend
