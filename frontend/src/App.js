@@ -12,6 +12,8 @@ import HRApplications from './components/hr/HRApplications';
 import Assessment from './components/assessment/Assessment';
 import InterviewRoom from './components/interview/InterviewRoom';
 import HRAssessment from './components/hr/HRAssessment';
+import HRKanban from './components/hr/HRKanban';
+
 
 function App() {
   return (
@@ -33,6 +35,10 @@ function App() {
         <Route path="/assessment/:jobId/:applicationId" element={<Assessment />} />
         <Route path="/interview/:roomName" element={<InterviewRoom />} />
         <Route path="/hr/assessment/:jobId" element={<HRAssessment />} />
+
+        {/* Kanban Pipeline */}
+        <Route path="/hr/kanban" element={<HRKanban />} />
+
       </Routes>
     </Router>
   );

@@ -77,7 +77,15 @@ function Dashboard() {
                   <h5>View All Applicants</h5>
                   <p>See all your posted jobs</p>
                 </div>
+
+                <div style={styles.actionCard} onClick={() => navigate('/hr/kanban')}>
+                <div style={styles.icon}>🗂️</div>
+                <h5>Pipeline Kanban</h5>
+                <p>Drag & drop recruitment pipeline</p>
+              </div>
+              
               </>
+              
             )}
 
             {user.role === 'candidate' && (

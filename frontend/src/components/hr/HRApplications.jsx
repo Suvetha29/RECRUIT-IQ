@@ -195,7 +195,8 @@ const HRApplications = () => {
   const [recordingModal, setRecordingModal] = useState(null);
   const [aiResult, setAiResult] = useState(null);
 
-  useEffect(() => { fetchData(); }, [jobId]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+useEffect(() => { fetchData(); }, [jobId]);
 
   const fetchData = async () => {
     try {
