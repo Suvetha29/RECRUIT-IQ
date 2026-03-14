@@ -12,10 +12,10 @@ const STATUS_OPTIONS = [
   { value: 'rejected',     label: '❌ Rejected' },
 ];
 
-// Interview Scheduler Modal
+// ── Interview Modal ──────────────────────────────────────────────────────────
 const InterviewModal = ({ applicant, jobTitle, onConfirm, onCancel }) => {
-  const [date, setDate] = useState('');
-  const [time, setTime] = useState('');
+  const [date, setDate]   = useState('');
+  const [time, setTime]   = useState('');
   const [notes, setNotes] = useState('');
   const [error, setError] = useState('');
   const today = new Date().toISOString().split('T')[0];
@@ -23,51 +23,43 @@ const InterviewModal = ({ applicant, jobTitle, onConfirm, onCancel }) => {
   const handleConfirm = () => {
     if (!date) { setError('Please select an interview date.'); return; }
     if (!time) { setError('Please select an interview time.'); return; }
-    setError('');
     onConfirm({ date, time, notes });
   };
 
-  const formatDate = (d) => {
-    if (!d) return '';
-    const dt = new Date(d + 'T00:00:00');
-    return dt.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-  };
-
   return (
-    <div style={modalStyles.overlay}>
-      <div style={modalStyles.box}>
-        <div style={modalStyles.header}>
-          <h2 style={modalStyles.headerTitle}>📅 Schedule Interview</h2>
-          <p style={modalStyles.headerSub}>{applicant.candidate_name} · {jobTitle}</p>
+    <div style={mS.overlay}>
+      <div style={mS.box}>
+        <div style={{...mS.header, background:'linear-gradient(135deg,#7C3AED,#4F46E5)'}}>
+          <div style={{fontSize:'32px',marginBottom:'8px'}}>📅</div>
+          <h2 style={mS.hTitle}>Schedule Interview</h2>
+          <p style={mS.hSub}>{applicant.candidate_name} · {jobTitle}</p>
         </div>
-        <div style={modalStyles.body}>
-          {error && <div style={modalStyles.error}>{error}</div>}
-          <div style={modalStyles.field}>
-            <label style={modalStyles.label}>Interview Date <span style={{color:'red'}}>*</span></label>
-            <input type="date" min={today} value={date} onChange={(e) => setDate(e.target.value)} style={modalStyles.input} />
-            {date && <p style={modalStyles.preview}>📅 {formatDate(date)}</p>}
+        <div style={mS.body}>
+          {error && <div style={mS.err}>{error}</div>}
+          <div style={mS.field}>
+            <label style={mS.label}>Date <span style={{color:'#ef4444'}}>*</span></label>
+            <input type="date" min={today} value={date} onChange={e=>setDate(e.target.value)} style={mS.input}/>
           </div>
-          <div style={modalStyles.field}>
-            <label style={modalStyles.label}>Interview Time <span style={{color:'red'}}>*</span></label>
-            <input type="time" value={time} onChange={(e) => setTime(e.target.value)} style={modalStyles.input} />
-            {time && <p style={modalStyles.preview}>⏰ {time}</p>}
+          <div style={mS.field}>
+            <label style={mS.label}>Time <span style={{color:'#ef4444'}}>*</span></label>
+            <input type="time" value={time} onChange={e=>setTime(e.target.value)} style={mS.input}/>
           </div>
-          <div style={modalStyles.field}>
-            <label style={modalStyles.label}>Notes <span style={{color:'#888', fontWeight:'normal'}}>(Optional)</span></label>
-            <textarea rows={3} placeholder="e.g. Video call via Jitsi Meet. Please be ready 5 mins early." value={notes} onChange={(e) => setNotes(e.target.value)} style={{...modalStyles.input, resize:'none'}} />
+          <div style={mS.field}>
+            <label style={mS.label}>Notes <span style={{color:'#9ca3af',fontWeight:400}}>(optional)</span></label>
+            <textarea rows={3} placeholder="e.g. Join via Jitsi. Be 5 mins early."
+              value={notes} onChange={e=>setNotes(e.target.value)}
+              style={{...mS.input,resize:'none'}}/>
           </div>
-          <div style={modalStyles.emailInfo}>
-            <span style={{fontSize:'20px'}}>📧</span>
+          <div style={mS.infoBox}>
+            <span style={{fontSize:'18px'}}>📧</span>
             <div>
-              <p style={{margin:0, fontWeight:'600', fontSize:'14px'}}>Email + Jitsi link will be sent automatically</p>
-              <p style={{margin:0, fontSize:'12px', color:'#666'}}>
-                {applicant.candidate_name} will receive details at {applicant.candidate_email}
-              </p>
+              <p style={{margin:0,fontWeight:700,fontSize:'13px'}}>Jitsi link + email auto-sent</p>
+              <p style={{margin:'2px 0 0',fontSize:'12px',color:'#6b7280'}}>{applicant.candidate_name} will receive details at {applicant.candidate_email}</p>
             </div>
           </div>
-          <div style={modalStyles.actions}>
-            <button style={modalStyles.cancelBtn} onClick={onCancel}>Cancel</button>
-            <button style={modalStyles.confirmBtn} onClick={handleConfirm}>✅ Confirm & Send Email</button>
+          <div style={mS.actions}>
+            <button style={mS.cancelBtn} onClick={onCancel}>Cancel</button>
+            <button style={mS.confirmBtn} onClick={handleConfirm}>✅ Confirm & Send</button>
           </div>
         </div>
       </div>
@@ -75,65 +67,51 @@ const InterviewModal = ({ applicant, jobTitle, onConfirm, onCancel }) => {
   );
 };
 
-// Recording Upload Modal
+// ── Recording Modal ──────────────────────────────────────────────────────────
 const RecordingModal = ({ applicant, onConfirm, onCancel }) => {
-  const [file, setFile] = useState(null);
+  const [file, setFile]         = useState(null);
   const [uploading, setUploading] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError]       = useState('');
 
   const handleUpload = async () => {
     if (!file) { setError('Please select a recording file.'); return; }
     setUploading(true);
-    const formData = new FormData();
-    formData.append('application_id', applicant.application_id);
-    formData.append('recording', file);
+    const fd = new FormData();
+    fd.append('application_id', applicant.application_id);
+    fd.append('recording', file);
     try {
-      const res = await api.post('/api/evaluation/upload', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
+      const res = await api.post('/api/evaluation/upload', fd, { headers: {'Content-Type':'multipart/form-data'} });
       onConfirm(res.data);
-    } catch (err) {
-      setError(err.response?.data?.detail || 'Upload failed.');
-    } finally {
-      setUploading(false);
-    }
+    } catch (err) { setError(err.response?.data?.detail || 'Upload failed.'); }
+    finally { setUploading(false); }
   };
 
   return (
-    <div style={modalStyles.overlay}>
-      <div style={modalStyles.box}>
-        <div style={{...modalStyles.header, background: 'linear-gradient(135deg, #0D9488, #0369a1)'}}>
-          <h2 style={modalStyles.headerTitle}>🎙️ Upload Interview Recording</h2>
-          <p style={modalStyles.headerSub}>{applicant.candidate_name}</p>
+    <div style={mS.overlay}>
+      <div style={mS.box}>
+        <div style={{...mS.header,background:'linear-gradient(135deg,#0D9488,#0369a1)'}}>
+          <div style={{fontSize:'32px',marginBottom:'8px'}}>🎙️</div>
+          <h2 style={mS.hTitle}>Upload Interview Recording</h2>
+          <p style={mS.hSub}>{applicant.candidate_name}</p>
         </div>
-        <div style={modalStyles.body}>
-          {error && <div style={modalStyles.error}>{error}</div>}
-          <div style={modalStyles.field}>
-            <label style={modalStyles.label}>Recording File (mp3, mp4, wav, m4a)</label>
-            <input
-              type="file"
-              accept=".mp3,.mp4,.wav,.m4a,.webm"
-              onChange={(e) => setFile(e.target.files[0])}
-              style={modalStyles.input}
-            />
+        <div style={mS.body}>
+          {error && <div style={mS.err}>{error}</div>}
+          <div style={mS.field}>
+            <label style={mS.label}>Recording File (mp3, mp4, wav, m4a)</label>
+            <input type="file" accept=".mp3,.mp4,.wav,.m4a,.webm"
+              onChange={e=>setFile(e.target.files[0])} style={mS.input}/>
           </div>
-          <div style={modalStyles.emailInfo}>
-            <span style={{fontSize:'20px'}}>🤖</span>
+          <div style={mS.infoBox}>
+            <span style={{fontSize:'18px'}}>🤖</span>
             <div>
-              <p style={{margin:0, fontWeight:'600', fontSize:'14px'}}>AI will automatically:</p>
-              <p style={{margin:0, fontSize:'12px', color:'#666'}}>
-                Transcribe audio → Evaluate performance → Give hire/reject recommendation
-              </p>
+              <p style={{margin:0,fontWeight:700,fontSize:'13px'}}>AI will automatically:</p>
+              <p style={{margin:'2px 0 0',fontSize:'12px',color:'#6b7280'}}>Transcribe → Evaluate → Give hire/reject recommendation</p>
             </div>
           </div>
-          {uploading && (
-            <div style={{textAlign:'center', padding:'20px', color:'#0D9488'}}>
-              <p>⏳ Transcribing and evaluating... This may take 30-60 seconds.</p>
-            </div>
-          )}
-          <div style={modalStyles.actions}>
-            <button style={modalStyles.cancelBtn} onClick={onCancel} disabled={uploading}>Cancel</button>
-            <button style={{...modalStyles.confirmBtn, backgroundColor:'#0D9488'}} onClick={handleUpload} disabled={uploading}>
+          {uploading && <div style={{textAlign:'center',padding:'16px',color:'#0D9488',fontSize:'13px'}}>⏳ Transcribing and evaluating... 30–60 seconds.</div>}
+          <div style={mS.actions}>
+            <button style={mS.cancelBtn} onClick={onCancel} disabled={uploading}>Cancel</button>
+            <button style={{...mS.confirmBtn,background:'#0D9488'}} onClick={handleUpload} disabled={uploading}>
               {uploading ? '⏳ Processing...' : '🚀 Upload & Evaluate'}
             </button>
           </div>
@@ -143,60 +121,59 @@ const RecordingModal = ({ applicant, onConfirm, onCancel }) => {
   );
 };
 
-// AI Result Modal
+// ── AI Result Modal ──────────────────────────────────────────────────────────
 const AIResultModal = ({ result, onClose }) => (
-  <div style={modalStyles.overlay}>
-    <div style={modalStyles.box}>
-      <div style={{...modalStyles.header, background: result.recommendation === 'hire' ? 'linear-gradient(135deg, #22C55E, #16A34A)' : 'linear-gradient(135deg, #EF4444, #DC2626)'}}>
-        <h2 style={modalStyles.headerTitle}>
-          {result.recommendation === 'hire' ? '✅ Recommended: HIRE' : '❌ Recommended: REJECT'}
-        </h2>
-        <p style={modalStyles.headerSub}>AI Score: {result.ai_score}%</p>
+  <div style={mS.overlay}>
+    <div style={mS.box}>
+      <div style={{...mS.header, background: result.recommendation==='hire'
+        ? 'linear-gradient(135deg,#22C55E,#16A34A)'
+        : 'linear-gradient(135deg,#EF4444,#DC2626)'}}>
+        <div style={{fontSize:'32px',marginBottom:'8px'}}>{result.recommendation==='hire'?'✅':'❌'}</div>
+        <h2 style={mS.hTitle}>{result.recommendation==='hire'?'Recommended: HIRE':'Recommended: REJECT'}</h2>
+        <p style={mS.hSub}>AI Score: {result.ai_score}%</p>
       </div>
-      <div style={modalStyles.body}>
-        <div style={{marginBottom:'16px'}}>
-          <p style={modalStyles.label}>📝 Summary</p>
-          <p style={{fontSize:'14px', color:'#333'}}>{result.summary}</p>
-        </div>
-        <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px', marginBottom:'16px'}}>
-          <div style={{backgroundColor:'#F0FDF4', borderRadius:'8px', padding:'12px'}}>
-            <p style={{margin:0, fontWeight:'600', fontSize:'13px', color:'#16A34A'}}>💪 Strengths</p>
-            <p style={{margin:'6px 0 0', fontSize:'13px', color:'#333'}}>{result.strengths}</p>
+      <div style={mS.body}>
+        <p style={{fontSize:'14px',color:'#374151',marginBottom:'16px'}}>{result.summary}</p>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'12px',marginBottom:'16px'}}>
+          <div style={{background:'#f0fdf4',borderRadius:'8px',padding:'12px'}}>
+            <p style={{margin:0,fontWeight:700,fontSize:'12px',color:'#16a34a'}}>💪 Strengths</p>
+            <p style={{margin:'6px 0 0',fontSize:'13px',color:'#374151'}}>{result.strengths}</p>
           </div>
-          <div style={{backgroundColor:'#FEF2F2', borderRadius:'8px', padding:'12px'}}>
-            <p style={{margin:0, fontWeight:'600', fontSize:'13px', color:'#DC2626'}}>⚠️ Weaknesses</p>
-            <p style={{margin:'6px 0 0', fontSize:'13px', color:'#333'}}>{result.weaknesses}</p>
+          <div style={{background:'#fef2f2',borderRadius:'8px',padding:'12px'}}>
+            <p style={{margin:0,fontWeight:700,fontSize:'12px',color:'#dc2626'}}>⚠️ Weaknesses</p>
+            <p style={{margin:'6px 0 0',fontSize:'13px',color:'#374151'}}>{result.weaknesses}</p>
           </div>
         </div>
         {result.transcript && (
-          <div style={{marginBottom:'16px'}}>
-            <p style={modalStyles.label}>📄 Transcript Preview</p>
-            <div style={{backgroundColor:'#F8FAFC', borderRadius:'8px', padding:'12px', maxHeight:'150px', overflowY:'auto', fontSize:'13px', color:'#555'}}>
-              {result.transcript.substring(0, 500)}...
-            </div>
+          <div style={{background:'#f8fafc',borderRadius:'8px',padding:'12px',maxHeight:'120px',overflowY:'auto',fontSize:'12px',color:'#6b7280',marginBottom:'16px'}}>
+            {result.transcript.substring(0,500)}...
           </div>
         )}
-        <button style={{...modalStyles.confirmBtn, width:'100%'}} onClick={onClose}>Close</button>
+        <button style={{...mS.confirmBtn,width:'100%'}} onClick={onClose}>Close</button>
       </div>
     </div>
   </div>
 );
 
+// ── Main Component ───────────────────────────────────────────────────────────
 const HRApplications = () => {
   const { jobId } = useParams();
-  const navigate = useNavigate();
+  const navigate  = useNavigate();
   const [applicants, setApplicants] = useState([]);
-  const [jobTitle, setJobTitle] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [jobTitle, setJobTitle]     = useState('');
+  const [loading, setLoading]       = useState(true);
+  const [error, setError]           = useState('');
   const [updatingId, setUpdatingId] = useState(null);
   const [expandedId, setExpandedId] = useState(null);
+  const [search, setSearch]         = useState('');
+  const [filterStatus, setFilterStatus] = useState('all');
   const [interviewModal, setInterviewModal] = useState(null);
   const [recordingModal, setRecordingModal] = useState(null);
-  const [aiResult, setAiResult] = useState(null);
+  const [aiResult, setAiResult]     = useState(null);
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
-useEffect(() => { fetchData(); }, [jobId]);
+  useEffect(() => { fetchData(); }, [jobId]);
 
   const fetchData = async () => {
     try {
@@ -206,350 +183,469 @@ useEffect(() => { fetchData(); }, [jobId]);
       ]);
       setApplicants(appRes.data);
       setJobTitle(jobRes.data.title);
-    } catch (err) {
-      setError('Failed to load applicants.');
-    } finally {
-      setLoading(false);
-    }
+    } catch { setError('Failed to load applicants.'); }
+    finally { setLoading(false); }
   };
 
   const handleStatusChange = async (applicant, newStatus) => {
-    if (newStatus === 'interview') {
-      setInterviewModal(applicant);
-      return;
-    }
-    await submitStatusUpdate(applicant.application_id, newStatus, null, null, null);
+    if (newStatus === 'interview') { setInterviewModal(applicant); return; }
+    await submitUpdate(applicant.application_id, newStatus);
   };
 
-  const handleInterviewConfirm = async ({ date, time, notes }) => {
-    await submitStatusUpdate(interviewModal.application_id, 'interview', date, time, notes);
-    setInterviewModal(null);
-    fetchData();
-  };
-
-  const handleRecordingConfirm = (result) => {
-    setRecordingModal(null);
-    setAiResult(result);
-    fetchData();
-  };
-
-  const submitStatusUpdate = async (applicationId, status, date, time, notes) => {
-    setUpdatingId(applicationId);
+  const submitUpdate = async (id, status, date, time, notes) => {
+    setUpdatingId(id);
     try {
-      await api.patch(`/api/applications/${applicationId}/status`, {
-        status,
-        interview_date: date || null,
-        interview_time: time || null,
-        interview_notes: notes || null,
+      await api.patch(`/api/applications/${id}/status`, {
+        status, interview_date: date||null, interview_time: time||null, interview_notes: notes||null,
       });
-      setApplicants(prev =>
-        prev.map(app =>
-          app.application_id === applicationId ? { ...app, status } : app
-        )
-      );
-      if (status === 'shortlisted') alert('✅ Candidate shortlisted! Email sent.');
-      if (status === 'interview') alert('✅ Interview scheduled! Jitsi link + email sent to candidate.');
+      setApplicants(prev => prev.map(a => a.application_id===id ? {...a,status} : a));
     } catch (err) {
-      alert(typeof err.response?.data?.detail === 'string' ? err.response?.data?.detail : 'Failed to update status.');
-    } finally {
-      setUpdatingId(null);
-    }
+      alert(typeof err.response?.data?.detail==='string' ? err.response.data.detail : 'Failed to update status.');
+    } finally { setUpdatingId(null); }
+  };
+
+  const handleInterviewConfirm = async ({date,time,notes}) => {
+    await submitUpdate(interviewModal.application_id,'interview',date,time,notes);
+    setInterviewModal(null); fetchData();
   };
 
   const generateOfferLetter = async (applicationId, candidateName) => {
     try {
-      const response = await api.post(
-        `/api/evaluation/offer-letter/${applicationId}`,
-        {},
-        { responseType: 'blob' }
-      );
-      const url = window.URL.createObjectURL(new Blob([response.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `Offer_Letter_${candidateName}.pdf`);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-    } catch (err) {
-      alert('Failed to generate offer letter.');
-    }
+      const res = await api.post(`/api/evaluation/offer-letter/${applicationId}`,{},{responseType:'blob'});
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement('a'); a.href=url;
+      a.setAttribute('download',`Offer_Letter_${candidateName}.pdf`);
+      document.body.appendChild(a); a.click(); a.remove();
+    } catch { alert('Failed to generate offer letter.'); }
   };
 
-  const getScoreColor = (score) => {
-    if (score >= 75) return { color: '#155724', background: '#d4edda', border: '#c3e6cb' };
-    if (score >= 50) return { color: '#856404', background: '#fff3cd', border: '#ffeeba' };
-    if (score >= 30) return { color: '#7e4800', background: '#ffe8cc', border: '#ffd5a8' };
-    return { color: '#721c24', background: '#f8d7da', border: '#f5c6cb' };
+  const avatarColor = (name='') => {
+    const colors=['#2563eb','#0D9488','#d97706','#7c3aed','#dc2626','#0891b2','#16a34a','#db2777'];
+    let h=0; for(let i=0;i<name.length;i++) h=name.charCodeAt(i)+((h<<5)-h);
+    return colors[Math.abs(h)%colors.length];
   };
 
-  if (loading) return (
-    <div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center' }}>
-      <p>Loading applicants...</p>
-    </div>
-  );
+  const statusBadge = (status) => {
+    const map = {
+      pending:      {label:'Pending',     bg:'#f3f4f6',color:'#6b7280'},
+      under_review: {label:'Reviewing',   bg:'#eff6ff',color:'#2563eb'},
+      shortlisted:  {label:'Shortlisted', bg:'#fef3c7',color:'#d97706'},
+      interview:    {label:'Interview',   bg:'#f5f3ff',color:'#7c3aed'},
+      hired:        {label:'Hired',       bg:'#dcfce7',color:'#16a34a'},
+      rejected:     {label:'Rejected',    bg:'#fee2e2',color:'#dc2626'},
+    };
+    return map[status] || {label:status,bg:'#f3f4f6',color:'#6b7280'};
+  };
+
+  const scoreColor = (s) =>
+    s>=75 ? {color:'#16a34a',bg:'#dcfce7'} :
+    s>=50 ? {color:'#d97706',bg:'#fef3c7'} :
+            {color:'#dc2626',bg:'#fee2e2'};
+
+  const filtered = applicants
+    .filter(a => filterStatus==='all' || a.status===filterStatus)
+    .filter(a => {
+      const q = search.toLowerCase();
+      return !q || a.candidate_name.toLowerCase().includes(q) || a.candidate_email.toLowerCase().includes(q);
+    });
 
   return (
-    <div style={styles.container}>
-      {/* Header */}
-      <div style={styles.header}>
-        <div>
-          <button style={styles.backBtn} onClick={() => navigate('/dashboard')}>← Back</button>
-          <h1 style={styles.title}><b>Application Tracking System</b></h1>
-          <p style={styles.subtitle}>{jobTitle} · {applicants.length} applicant{applicants.length !== 1 ? 's' : ''} · Ranked by ATS Score</p>
-        </div>
-        <button
-          style={styles.createAssessmentBtn}
-          onClick={() => navigate(`/hr/assessment/${jobId}`)}
-        >
-          📝 Create Assessment
-        </button>
-      </div>
+    <>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800&display=swap');
+        *, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
+        html, body, #root { height:100%; }
 
-      <div style={styles.content}>
-        {error && <div style={styles.errorBox}>{error}</div>}
+        .app-root { display:flex; min-height:100vh; font-family:'Nunito',sans-serif; background:#f0f4f8; }
 
-        {applicants.length === 0 ? (
-          <div style={styles.empty}>
-            <div style={{fontSize:'60px'}}>👥</div>
-            <h3>No applicants yet</h3>
-            <p style={{color:'#6c757d'}}>Share the job listing to attract candidates.</p>
+        /* SIDEBAR */
+        .sidebar {
+          width:220px; flex-shrink:0; background:#1a1d2e;
+          display:flex; flex-direction:column; min-height:100vh;
+          position:sticky; top:0; box-shadow:2px 0 12px rgba(0,0,0,0.15);
+        }
+        .sb-brand { display:flex; align-items:center; gap:10px; padding:22px 18px 18px; border-bottom:1px solid rgba(255,255,255,0.06); }
+        .sb-brand-icon { width:36px; height:36px; background:#2563eb; border-radius:9px; display:flex; align-items:center; justify-content:center; font-size:18px; }
+        .sb-brand-name { font-size:15px; font-weight:800; color:white; }
+        .sb-brand-name span { color:#60a5fa; }
+        .sb-profile { display:flex; flex-direction:column; align-items:center; padding:22px 18px 18px; border-bottom:1px solid rgba(255,255,255,0.06); }
+        .sb-avatar { width:62px; height:62px; border-radius:50%; background:linear-gradient(135deg,#2563eb,#0D9488); display:flex; align-items:center; justify-content:center; font-size:24px; font-weight:800; color:white; margin-bottom:10px; border:3px solid rgba(255,255,255,0.12); box-shadow:0 4px 12px rgba(37,99,235,0.4); }
+        .sb-uname { font-size:13.5px; font-weight:700; color:white; }
+        .sb-urole { font-size:11px; color:#60a5fa; font-weight:600; text-transform:uppercase; letter-spacing:0.8px; margin-top:3px; }
+        .sb-nav { flex:1; padding:14px 0; }
+        .sb-lbl { font-size:9.5px; font-weight:700; color:rgba(255,255,255,0.28); text-transform:uppercase; letter-spacing:1.2px; padding:10px 18px 5px; }
+        .sb-item { display:flex; align-items:center; gap:11px; padding:10px 18px; cursor:pointer; font-size:13px; font-weight:600; color:rgba(255,255,255,0.55); border-left:3px solid transparent; transition:all 0.18s; }
+        .sb-item:hover { background:rgba(255,255,255,0.05); color:rgba(255,255,255,0.9); }
+        .sb-item.active { background:rgba(37,99,235,0.2); color:white; border-left-color:#2563eb; }
+        .sb-item .si { font-size:15px; width:20px; text-align:center; }
+        .sb-logout { padding:14px 18px; border-top:1px solid rgba(255,255,255,0.06); }
+        .sb-out-btn { width:100%; padding:10px; background:rgba(220,38,38,0.12); border:1px solid rgba(220,38,38,0.25); border-radius:8px; color:#fca5a5; font-size:13px; font-weight:700; font-family:'Nunito',sans-serif; cursor:pointer; transition:all 0.2s; display:flex; align-items:center; justify-content:center; gap:8px; }
+        .sb-out-btn:hover { background:rgba(220,38,38,0.28); color:white; }
+
+        /* MAIN */
+        .main-area { flex:1; display:flex; flex-direction:column; overflow-y:auto; }
+        .topbar { background:white; padding:0 30px; display:flex; align-items:center; justify-content:space-between; height:62px; flex-shrink:0; box-shadow:0 1px 4px rgba(0,0,0,0.06); position:sticky; top:0; z-index:50; }
+        .topbar-left h2 { font-size:17px; font-weight:800; color:#1a1d2e; }
+        .topbar-left p  { font-size:11.5px; color:#9ca3af; margin-top:1px; }
+        .topbar-right { display:flex; align-items:center; gap:10px; }
+
+        .page { padding:24px 28px; }
+
+        /* FILTERS */
+        .filters-bar { display:flex; gap:12px; align-items:center; margin-bottom:20px; flex-wrap:wrap; }
+        .search-box { display:flex; align-items:center; gap:8px; background:white; border:1px solid #e5e7eb; border-radius:10px; padding:9px 14px; flex:1; min-width:220px; max-width:340px; box-shadow:0 1px 3px rgba(0,0,0,0.05); }
+        .search-box input { border:none; background:transparent; outline:none; font-size:13.5px; font-family:'Nunito',sans-serif; color:#1a1d2e; width:100%; }
+        .search-box input::placeholder { color:#9ca3af; }
+        .filter-tabs { display:flex; gap:8px; flex-wrap:wrap; }
+        .ftab { padding:7px 14px; border-radius:20px; border:1.5px solid #e5e7eb; background:white; cursor:pointer; font-size:12px; font-weight:700; color:#6b7280; transition:all 0.15s; font-family:'Nunito',sans-serif; }
+        .ftab:hover { border-color:#2563eb; color:#2563eb; }
+        .ftab.active { background:#2563eb; color:white; border-color:#2563eb; }
+
+        /* TABLE CARD */
+        .tbl-card { background:white; border-radius:14px; box-shadow:0 1px 4px rgba(0,0,0,0.06); overflow:hidden; margin-bottom:24px; }
+        .tbl-hd { display:flex; align-items:center; justify-content:space-between; padding:18px 22px; border-bottom:1px solid #f3f4f6; }
+        .tbl-title { font-size:14px; font-weight:800; color:#1a1d2e; }
+
+        table { width:100%; border-collapse:collapse; }
+        thead tr { background:#f8fafc; }
+        th { padding:11px 16px; text-align:left; font-size:10.5px; font-weight:700; color:#9ca3af; text-transform:uppercase; letter-spacing:0.8px; white-space:nowrap; }
+        tbody tr { border-top:1px solid #f3f4f6; transition:background 0.12s; }
+        tbody tr:hover { background:#f8fafc; }
+        td { padding:13px 16px; font-size:13px; color:#374151; vertical-align:middle; }
+
+        .cand-cell { display:flex; align-items:center; gap:10px; }
+        .cand-av { width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:800; color:white; flex-shrink:0; }
+        .cand-name  { font-weight:700; color:#1a1d2e; font-size:13px; }
+        .cand-email { font-size:11px; color:#9ca3af; margin-top:1px; }
+
+        .score-pill { padding:3px 10px; border-radius:20px; font-size:11.5px; font-weight:700; display:inline-block; }
+        .status-pill { padding:3px 10px; border-radius:20px; font-size:11px; font-weight:700; display:inline-block; }
+
+        .td-acts { display:flex; gap:6px; flex-wrap:wrap; }
+        .btn-xs { padding:5px 10px; border:none; border-radius:6px; font-size:11px; font-weight:700; cursor:pointer; font-family:'Nunito',sans-serif; transition:all 0.15s; white-space:nowrap; }
+        .btn-resume  { background:#eff6ff; color:#2563eb; }
+        .btn-resume:hover  { background:#dbeafe; }
+        .btn-join    { background:#f5f3ff; color:#7c3aed; }
+        .btn-join:hover    { background:#ede9fe; }
+        .btn-rec     { background:#f0fdf4; color:#16a34a; }
+        .btn-rec:hover     { background:#dcfce7; }
+        .btn-offer   { background:#fefce8; color:#854d0e; }
+        .btn-offer:hover   { background:#fef9c3; }
+        .btn-expand  { background:#f3f4f6; color:#6b7280; }
+        .btn-expand:hover  { background:#e5e7eb; }
+        .btn-assess  { background:#fdf4ff; color:#7c3aed; }
+        .btn-assess:hover  { background:#fae8ff; }
+
+        /* STATUS SELECT */
+        .status-select { padding:5px 8px; border:1.5px solid #e5e7eb; border-radius:7px; font-size:11.5px; font-family:'Nunito',sans-serif; background:white; color:#374151; outline:none; cursor:pointer; transition:border-color 0.15s; }
+        .status-select:focus { border-color:#2563eb; }
+        .status-select:disabled { opacity:0.5; cursor:not-allowed; }
+
+        /* EXPANDED ROW */
+        .exp-row td { padding:0; border-top:none; }
+        .exp-body { padding:20px 22px; background:#fafbfc; border-top:1px solid #f3f4f6; }
+        .exp-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+        .exp-section { background:white; border-radius:10px; padding:16px; border:1px solid #f3f4f6; }
+        .exp-sec-title { font-size:11px; font-weight:800; color:#9ca3af; text-transform:uppercase; letter-spacing:0.7px; margin-bottom:10px; }
+        .exp-feedback-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:8px; }
+        .exp-fitem { background:#f8fafc; border-radius:8px; padding:10px; }
+        .exp-flabel { font-size:10px; color:#9ca3af; font-weight:600; margin-bottom:3px; }
+        .exp-fval   { font-size:12px; font-weight:700; color:#374151; }
+        .exp-cover  { font-size:13px; color:#6b7280; white-space:pre-wrap; line-height:1.6; }
+        .exp-interview { background:#f5f3ff; border-radius:10px; padding:14px; margin-bottom:12px; }
+        .exp-int-row { font-size:13px; color:#374151; margin-bottom:4px; }
+
+        /* BADGES */
+        .assess-pass { background:#dcfce7; color:#16a34a; font-size:11px; font-weight:700; padding:2px 8px; border-radius:20px; display:inline-block; margin-top:4px; }
+        .assess-fail { background:#fee2e2; color:#dc2626; font-size:11px; font-weight:700; padding:2px 8px; border-radius:20px; display:inline-block; margin-top:4px; }
+
+        .tbl-footer { display:flex; align-items:center; justify-content:space-between; padding:13px 22px; border-top:1px solid #f3f4f6; font-size:13px; color:#6b7280; }
+
+        .empty-state { text-align:center; padding:60px 20px; }
+        .empty-icon  { font-size:52px; margin-bottom:14px; }
+        .empty-title { font-size:16px; font-weight:700; color:#6b7280; margin-bottom:6px; }
+        .empty-sub   { font-size:13px; color:#9ca3af; }
+
+        .loading-row { text-align:center; padding:48px; color:#9ca3af; font-size:14px; }
+
+        @media(max-width:700px) {
+          .sidebar { display:none; }
+          .page { padding:14px; }
+          .exp-grid { grid-template-columns:1fr; }
+        }
+      `}</style>
+
+      <div className="app-root">
+
+        {/* ── SIDEBAR ── */}
+        <aside className="sidebar">
+          <div className="sb-brand">
+            <div className="sb-brand-icon">🎯</div>
+            <div className="sb-brand-name">RECRUIT<span>-IQ</span></div>
           </div>
-        ) : (
-          applicants.map((app, index) => {
-            const scoreColors = getScoreColor(app.ats_score);
-            return (
-              <div key={app.application_id} style={styles.card}>
-                <div style={styles.cardMain}>
-                  {/* Rank */}
-                  <div style={styles.rank}>#{index + 1}</div>
+          <div className="sb-profile">
+            <div className="sb-avatar">{(user.full_name||'H').charAt(0).toUpperCase()}</div>
+            <div className="sb-uname">{user.full_name}</div>
+            <div className="sb-urole">HR / Recruiter</div>
+          </div>
+          <nav className="sb-nav">
+            <div className="sb-lbl">Main</div>
+            <div className="sb-item" onClick={() => navigate('/dashboard')}><span className="si">⊞</span>Dashboard</div>
+            <div className="sb-item" onClick={() => navigate('/jobs')}><span className="si">💼</span>All Jobs</div>
+            <div className="sb-item" onClick={() => navigate('/create-job')}><span className="si">➕</span>Post Job</div>
+            <div className="sb-item" onClick={() => navigate('/hr/kanban')}><span className="si">🗂️</span>Pipeline</div>
+            <div className="sb-lbl" style={{marginTop:'10px'}}>Settings</div>
+            <div className="sb-item" onClick={() => navigate('/hr/kanban',{state:{tab:'interviews'}})}><span className="si">📅</span>Calendar</div>
+            <div className="sb-item" onClick={() => navigate('/hr/kanban',{state:{tab:'funnel'}})}><span className="si">📊</span>Chart / Report</div>
+            <div className="sb-item" onClick={() => navigate('/settings')}><span className="si">⚙️</span>Settings</div>
+            <div className="sb-item active"><span className="si">☰</span>Table</div>
+          </nav>
+          <div className="sb-logout">
+            <button className="sb-out-btn" onClick={() => { localStorage.removeItem('token'); localStorage.removeItem('user'); navigate('/login'); }}>
+              <span>⏻</span>Log Out
+            </button>
+          </div>
+        </aside>
 
-                  {/* Info */}
-                  <div style={styles.info}>
-                    <div style={{display:'flex', alignItems:'center', gap:'10px', flexWrap:'wrap'}}>
-                      <h3 style={styles.name}>{app.candidate_name}</h3>
-                      <ApplicationStatus status={app.status} size="sm" />
-                    </div>
-                    <p style={styles.email}>{app.candidate_email}</p>
-                    {app.candidate_phone && <p style={styles.phone}>{app.candidate_phone}</p>}
-                    <p style={styles.date}>Applied {new Date(app.applied_at).toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' })}</p>
+        {/* ── MAIN ── */}
+        <div className="main-area">
+          <div className="topbar">
+            <div className="topbar-left">
+              <h2>Applicants Table</h2>
+              <p>{jobTitle} · {applicants.length} applicant{applicants.length!==1?'s':''} · Ranked by ATS Score</p>
+            </div>
+            <div className="topbar-right">
+              <button
+                onClick={() => navigate(`/hr/assessment/${jobId}`)}
+                style={{padding:'8px 16px',background:'#0D9488',color:'white',border:'none',borderRadius:'8px',cursor:'pointer',fontSize:'13px',fontWeight:'700',fontFamily:'Nunito,sans-serif'}}
+              >📝 Create Assessment</button>
+              <button
+                onClick={() => navigate('/dashboard')}
+                style={{padding:'8px 16px',background:'#f3f4f6',color:'#374151',border:'none',borderRadius:'8px',cursor:'pointer',fontSize:'13px',fontWeight:'700',fontFamily:'Nunito,sans-serif'}}
+              >← Back</button>
+            </div>
+          </div>
 
-                    {/* Assessment Result Badge */}
-                    {app.assessment_result && (
-                      <div style={{marginTop:'6px'}}>
-                        <span style={{
-                          fontSize:'12px', fontWeight:'600', padding:'3px 10px', borderRadius:'20px',
-                          backgroundColor: app.assessment_result.passed ? '#d4edda' : '#f8d7da',
-                          color: app.assessment_result.passed ? '#155724' : '#721c24'
-                        }}>
-                          {app.assessment_result.passed ? '✅ Assessment Passed' : '❌ Assessment Failed'} — {app.assessment_result.score}%
-                        </span>
-                      </div>
-                    )}
+          <div className="page">
+            {error && <div style={{background:'#fee2e2',border:'1px solid #fecaca',color:'#991b1b',padding:'12px 16px',borderRadius:'10px',marginBottom:'16px',fontSize:'13px'}}>{error}</div>}
 
-                    {/* AI Evaluation Badge */}
-                    {app.ai_score && (
-                      <div style={{marginTop:'6px'}}>
-                        <span style={{
-                          fontSize:'12px', fontWeight:'600', padding:'3px 10px', borderRadius:'20px',
-                          backgroundColor: app.ai_recommendation === 'hire' ? '#d4edda' : '#f8d7da',
-                          color: app.ai_recommendation === 'hire' ? '#155724' : '#721c24'
-                        }}>
-                          🤖 AI Score: {app.ai_score}% — {app.ai_recommendation === 'hire' ? 'Recommend Hire' : 'Recommend Reject'}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* ATS Score */}
-                  <div style={{ ...styles.scoreBox, color: scoreColors.color, background: scoreColors.background, border: `1px solid ${scoreColors.border}` }}>
-                    <p style={styles.scoreLabel}>ATS Score</p>
-                    <p style={styles.scoreValue}>{Math.round(app.ats_score)}%</p>
-                  </div>
-
-                  {/* Actions */}
-                  <div style={styles.actions}>
-                    <select
-                      value={app.status}
-                      onChange={(e) => handleStatusChange(app, e.target.value)}
-                      disabled={updatingId === app.application_id}
-                      style={styles.select}
-                    >
-                      {STATUS_OPTIONS.map(opt => (
-                        <option key={opt.value} value={opt.value}>{opt.label}</option>
-                      ))}
-                    </select>
-
-                    <a href={app.resume_url} target="_blank" rel="noopener noreferrer" style={styles.resumeBtn}>
-                      📄 Resume
-                    </a>
-
-                    {/* Meet Link */}
-                    {app.meet_link && (
-                      <a href={app.meet_link} target="_blank" rel="noopener noreferrer" style={{...styles.resumeBtn, backgroundColor:'#EBF5FB', color:'#1A5276'}}>
-                        🎥 Join Interview
-                      </a>
-                    )}
-
-                    {/* Upload Recording */}
-                    {app.status === 'interview' && (
-                      <button
-                        style={{...styles.resumeBtn, backgroundColor:'#F0FDF4', color:'#166534', border:'1px solid #BBF7D0', cursor:'pointer'}}
-                        onClick={() => setRecordingModal(app)}
-                      >
-                        🎙️ Upload Recording
-                      </button>
-                    )}
-
-                    {/* Generate Offer Letter */}
-                    {app.status === 'hired' && (
-                      <button
-                        style={{...styles.resumeBtn, backgroundColor:'#FEF9C3', color:'#854D0E', border:'1px solid #FDE68A', cursor:'pointer'}}
-                        onClick={() => generateOfferLetter(app.application_id, app.candidate_name)}
-                      >
-                        📄 Offer Letter
-                      </button>
-                    )}
-
-                    <button
-                      style={styles.expandBtn}
-                      onClick={() => setExpandedId(expandedId === app.application_id ? null : app.application_id)}
-                    >
-                      {expandedId === app.application_id ? '▲ Less' : '▼ Details'}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Expanded */}
-                {expandedId === app.application_id && (
-                  <div style={styles.expanded}>
-                    {/* Interview Details */}
-                    {app.meet_link && (
-                      <div style={{marginBottom:'16px', backgroundColor:'#EBF5FB', borderRadius:'8px', padding:'14px'}}>
-                        <p style={styles.sectionLabel}>🎥 Interview Scheduled</p>
-                        <p style={{margin:'4px 0', fontSize:'14px'}}>📅 {app.interview_date} &nbsp; ⏰ {app.interview_time}</p>
-                        <p style={{margin:'4px 0', fontSize:'13px', color:'#1A5276'}}>🔗 {app.meet_link}</p>
-                      </div>
-                    )}
-
-                    {/* ATS Breakdown */}
-                    {app.ats_feedback && (
-                      <div>
-                        <p style={styles.sectionLabel}>📊 ATS Breakdown</p>
-                        <div style={styles.feedbackGrid}>
-                          {app.ats_feedback.split('|').map((part, i) => {
-                            const [label, value] = part.split(':');
-                            if (!value || !label) return null;
-                            return (
-                              <div key={i} style={styles.feedbackItem}>
-                                <p style={styles.feedbackLabel}>{label.trim()}</p>
-                                <p style={styles.feedbackValue}>{value.trim()}</p>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Cover Letter */}
-                    {app.cover_letter && (
-                      <div style={{marginTop:'15px'}}>
-                        <p style={styles.sectionLabel}>📝 Cover Letter</p>
-                        <div style={styles.coverLetter}>{app.cover_letter}</div>
-                      </div>
-                    )}
-                  </div>
-                )}
+            {/* FILTERS */}
+            <div className="filters-bar">
+              <div className="search-box">
+                <span style={{color:'#9ca3af'}}>🔍</span>
+                <input placeholder="Search by name or email..." value={search} onChange={e=>setSearch(e.target.value)}/>
               </div>
-            );
-          })
-        )}
+              <div className="filter-tabs">
+                {['all','pending','under_review','shortlisted','interview','hired','rejected'].map(s => (
+                  <button key={s} className={`ftab ${filterStatus===s?'active':''}`} onClick={()=>setFilterStatus(s)}>
+                    {s==='all' ? `All (${applicants.length})` :
+                     s==='under_review' ? `Reviewing (${applicants.filter(a=>a.status===s).length})` :
+                     `${s.charAt(0).toUpperCase()+s.slice(1)} (${applicants.filter(a=>a.status===s).length})`}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* TABLE */}
+            <div className="tbl-card">
+              <div className="tbl-hd">
+                <span className="tbl-title">👥 APPLICANTS LIST</span>
+                <span style={{fontSize:'12px',color:'#9ca3af',fontWeight:600}}>Showing {filtered.length} of {applicants.length}</span>
+              </div>
+
+              {loading ? (
+                <div className="loading-row">Loading applicants...</div>
+              ) : filtered.length === 0 ? (
+                <div className="empty-state">
+                  <div className="empty-icon">👥</div>
+                  <div className="empty-title">No applicants found</div>
+                  <div className="empty-sub">Try adjusting your search or filter</div>
+                </div>
+              ) : (
+                <table>
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>Candidate</th>
+                      <th>ATS Score</th>
+                      <th>Assessment</th>
+                      <th>AI Score</th>
+                      <th>Status</th>
+                      <th>Applied</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.map((app, i) => {
+                      const sc  = scoreColor(app.ats_score);
+                      const st  = statusBadge(app.status);
+                      const col = avatarColor(app.candidate_name);
+                      const isExpanded = expandedId === app.application_id;
+                      return (
+                        <React.Fragment key={app.application_id}>
+                          <tr>
+                            <td style={{color:'#9ca3af',fontWeight:700,fontSize:'12px'}}>#{i+1}</td>
+                            <td>
+                              <div className="cand-cell">
+                                <div className="cand-av" style={{background:col}}>{app.candidate_name.charAt(0).toUpperCase()}</div>
+                                <div>
+                                  <div className="cand-name">{app.candidate_name}</div>
+                                  <div className="cand-email">{app.candidate_email}</div>
+                                </div>
+                              </div>
+                            </td>
+                            <td>
+                              <span className="score-pill" style={{background:sc.bg,color:sc.color}}>
+                                {Math.round(app.ats_score)}%
+                              </span>
+                            </td>
+                            <td>
+                              {app.assessment_result ? (
+                                <span className={app.assessment_result.passed?'assess-pass':'assess-fail'}>
+                                  {app.assessment_result.passed?'✅':'❌'} {app.assessment_result.score}%
+                                </span>
+                              ) : <span style={{color:'#d1d5db',fontSize:'12px'}}>—</span>}
+                            </td>
+                            <td>
+                              {app.ai_score ? (
+                                <span className="score-pill" style={{
+                                  background: app.ai_recommendation==='hire'?'#dcfce7':'#fee2e2',
+                                  color:      app.ai_recommendation==='hire'?'#16a34a':'#dc2626',
+                                }}>
+                                  🤖 {app.ai_score}%
+                                </span>
+                              ) : <span style={{color:'#d1d5db',fontSize:'12px'}}>—</span>}
+                            </td>
+                            <td>
+                              <select
+                                className="status-select"
+                                value={app.status}
+                                onChange={e=>handleStatusChange(app,e.target.value)}
+                                disabled={updatingId===app.application_id}
+                                style={{background:st.bg,color:st.color,borderColor:st.color+'40'}}
+                              >
+                                {STATUS_OPTIONS.map(o=>(
+                                  <option key={o.value} value={o.value}>{o.label}</option>
+                                ))}
+                              </select>
+                            </td>
+                            <td style={{fontSize:'12px',color:'#9ca3af',whiteSpace:'nowrap'}}>
+                              {new Date(app.applied_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}
+                            </td>
+                            <td>
+                              <div className="td-acts">
+                                <a href={app.resume_url} target="_blank" rel="noopener noreferrer" className="btn-xs btn-resume">📄 Resume</a>
+                                {app.meet_link && <a href={app.meet_link} target="_blank" rel="noopener noreferrer" className="btn-xs btn-join">🎥 Join</a>}
+                                {app.status==='interview' && (
+                                  <button className="btn-xs btn-rec" onClick={()=>setRecordingModal(app)}>🎙️ Recording</button>
+                                )}
+                                {app.status==='hired' && (
+                                  <button className="btn-xs btn-offer" onClick={()=>generateOfferLetter(app.application_id,app.candidate_name)}>📄 Offer</button>
+                                )}
+                                <button className="btn-xs btn-expand" onClick={()=>setExpandedId(isExpanded?null:app.application_id)}>
+                                  {isExpanded?'▲ Less':'▼ More'}
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+
+                          {/* EXPANDED ROW */}
+                          {isExpanded && (
+                            <tr className="exp-row">
+                              <td colSpan={8}>
+                                <div className="exp-body">
+                                  <div className="exp-grid">
+                                    {/* ATS Breakdown */}
+                                    {app.ats_feedback && (
+                                      <div className="exp-section">
+                                        <div className="exp-sec-title">📊 ATS Breakdown</div>
+                                        <div className="exp-feedback-grid">
+                                          {app.ats_feedback.split('|').map((part,idx) => {
+                                            const [label,value] = part.split(':');
+                                            if(!value||!label) return null;
+                                            return (
+                                              <div key={idx} className="exp-fitem">
+                                                <div className="exp-flabel">{label.trim()}</div>
+                                                <div className="exp-fval">{value.trim()}</div>
+                                              </div>
+                                            );
+                                          })}
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {/* Interview + Cover */}
+                                    <div className="exp-section">
+                                      {app.meet_link && (
+                                        <div className="exp-interview">
+                                          <div className="exp-sec-title">🎥 Interview Scheduled</div>
+                                          <div className="exp-int-row">📅 {app.interview_date} &nbsp; ⏰ {app.interview_time}</div>
+                                          <div style={{fontSize:'12px',color:'#7c3aed',marginTop:'4px',wordBreak:'break-all'}}>🔗 {app.meet_link}</div>
+                                        </div>
+                                      )}
+                                      {app.cover_letter && (
+                                        <>
+                                          <div className="exp-sec-title">📝 Cover Letter</div>
+                                          <div className="exp-cover">{app.cover_letter}</div>
+                                        </>
+                                      )}
+                                      {!app.meet_link && !app.cover_letter && (
+                                        <div style={{color:'#9ca3af',fontSize:'13px',padding:'10px 0'}}>No additional details available.</div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+
+              {!loading && filtered.length > 0 && (
+                <div className="tbl-footer">
+                  <span>Showing {filtered.length} of {applicants.length} applicants</span>
+                  <span style={{fontSize:'12px',color:'#9ca3af'}}>Sorted by ATS Score ↓</span>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* Modals */}
+      {/* MODALS */}
       {interviewModal && (
-        <InterviewModal
-          applicant={interviewModal}
-          jobTitle={jobTitle}
-          onConfirm={handleInterviewConfirm}
-          onCancel={() => setInterviewModal(null)}
-        />
+        <InterviewModal applicant={interviewModal} jobTitle={jobTitle}
+          onConfirm={handleInterviewConfirm} onCancel={()=>setInterviewModal(null)}/>
       )}
-
       {recordingModal && (
-        <RecordingModal
-          applicant={recordingModal}
-          onConfirm={handleRecordingConfirm}
-          onCancel={() => setRecordingModal(null)}
-        />
+        <RecordingModal applicant={recordingModal}
+          onConfirm={r=>{setRecordingModal(null);setAiResult(r);fetchData();}}
+          onCancel={()=>setRecordingModal(null)}/>
       )}
-
-      {aiResult && (
-        <AIResultModal
-          result={aiResult}
-          onClose={() => setAiResult(null)}
-        />
-      )}
-    </div>
+      {aiResult && <AIResultModal result={aiResult} onClose={()=>setAiResult(null)}/>}
+    </>
   );
 };
 
-const styles = {
-  container: { minHeight: '100vh', backgroundColor: '#f0f2f5' },
-  header: {
-    backgroundColor: 'white', padding: '20px 40px',
-    boxShadow: '0 2px 4px rgba(0,0,0,0.1)', marginBottom: '30px',
-    display: 'flex', justifyContent: 'space-between', alignItems: 'center'
-  },
-  backBtn: { background: 'none', border: 'none', color: '#007bff', cursor: 'pointer', fontSize: '14px', padding: '0 0 8px 0' },
-  title: { margin: '0', fontSize: '26px', color: '#1a1a1a' },
-  subtitle: { margin: '4px 0 0 0', color: '#6c757d', fontSize: '14px' },
-  createAssessmentBtn: {
-    padding: '10px 20px', backgroundColor: '#0D9488', color: 'white',
-    border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '14px', fontWeight: '600'
-  },
-  content: { maxWidth: '900px', margin: '0 auto', padding: '0 20px 40px' },
-  errorBox: { background: '#f8d7da', border: '1px solid #f5c6cb', color: '#721c24', padding: '12px', borderRadius: '8px', marginBottom: '20px' },
-  empty: { textAlign: 'center', padding: '60px', backgroundColor: 'white', borderRadius: '12px' },
-  card: { backgroundColor: 'white', borderRadius: '12px', marginBottom: '16px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)', overflow: 'hidden' },
-  cardMain: { padding: '20px', display: 'flex', gap: '16px', alignItems: 'flex-start', flexWrap: 'wrap' },
-  rank: { width: '40px', height: '40px', borderRadius: '50%', backgroundColor: '#e8f0fe', color: '#3d5afe', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '14px', flexShrink: 0 },
-  info: { flex: 1, minWidth: '200px' },
-  name: { margin: '0', fontSize: '18px', color: '#1a1a1a' },
-  email: { margin: '4px 0 0', color: '#6c757d', fontSize: '14px' },
-  phone: { margin: '2px 0 0', color: '#6c757d', fontSize: '13px' },
-  date: { margin: '4px 0 0', color: '#adb5bd', fontSize: '12px' },
-  scoreBox: { padding: '12px 16px', borderRadius: '10px', textAlign: 'center', minWidth: '90px' },
-  scoreLabel: { margin: '0', fontSize: '11px', fontWeight: '600', opacity: 0.7 },
-  scoreValue: { margin: '4px 0 0', fontSize: '26px', fontWeight: 'bold' },
-  actions: { display: 'flex', flexDirection: 'column', gap: '8px', minWidth: '160px' },
-  select: { width: '100%', padding: '8px 10px', border: '1px solid #dee2e6', borderRadius: '8px', fontSize: '13px', backgroundColor: 'white', cursor: 'pointer' },
-  resumeBtn: { display: 'block', textAlign: 'center', padding: '8px', backgroundColor: '#f8f9fa', color: '#495057', borderRadius: '8px', textDecoration: 'none', fontSize: '13px', fontWeight: '500', border: '1px solid #dee2e6' },
-  expandBtn: { padding: '8px', backgroundColor: 'white', border: '1px solid #dee2e6', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', color: '#6c757d' },
-  expanded: { borderTop: '1px solid #f0f0f0', padding: '20px' },
-  sectionLabel: { margin: '0 0 10px', fontSize: '13px', fontWeight: '600', color: '#6c757d' },
-  feedbackGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '8px' },
-  feedbackItem: { backgroundColor: '#f8f9fa', borderRadius: '8px', padding: '10px' },
-  feedbackLabel: { margin: '0', fontSize: '11px', color: '#adb5bd' },
-  feedbackValue: { margin: '4px 0 0', fontSize: '12px', fontWeight: '600', color: '#495057' },
-  coverLetter: { backgroundColor: '#f8f9fa', borderRadius: '8px', padding: '15px', fontSize: '14px', color: '#495057', whiteSpace: 'pre-wrap' },
+const mS = {
+  overlay:    {position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:1000,padding:'20px'},
+  box:        {background:'white',borderRadius:'16px',width:'100%',maxWidth:'480px',overflow:'hidden',boxShadow:'0 20px 60px rgba(0,0,0,0.25)'},
+  header:     {padding:'28px 24px',textAlign:'center'},
+  hTitle:     {margin:0,color:'white',fontSize:'20px',fontWeight:800},
+  hSub:       {margin:'6px 0 0',color:'rgba(255,255,255,0.8)',fontSize:'13px'},
+  body:       {padding:'24px'},
+  err:        {background:'#fee2e2',color:'#991b1b',padding:'10px 14px',borderRadius:'8px',marginBottom:'16px',fontSize:'13px'},
+  field:      {marginBottom:'16px'},
+  label:      {display:'block',fontWeight:700,fontSize:'12.5px',color:'#374151',marginBottom:'6px',letterSpacing:'0.3px'},
+  input:      {width:'100%',padding:'10px 14px',border:'1.5px solid #e5e7eb',borderRadius:'8px',fontSize:'14px',outline:'none',boxSizing:'border-box',fontFamily:'Nunito,sans-serif'},
+  infoBox:    {display:'flex',gap:'10px',alignItems:'flex-start',background:'#eff6ff',borderRadius:'8px',padding:'12px',marginBottom:'18px'},
+  actions:    {display:'flex',gap:'10px'},
+  cancelBtn:  {flex:1,padding:'11px',background:'white',color:'#6b7280',border:'1px solid #e5e7eb',borderRadius:'8px',cursor:'pointer',fontSize:'14px',fontFamily:'Nunito,sans-serif'},
+  confirmBtn: {flex:2,padding:'11px',background:'linear-gradient(135deg,#7C3AED,#4F46E5)',color:'white',border:'none',borderRadius:'8px',cursor:'pointer',fontSize:'14px',fontWeight:700,fontFamily:'Nunito,sans-serif'},
 };
 
-const modalStyles = {
-  overlay: { position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' },
-  box: { backgroundColor: 'white', borderRadius: '16px', width: '100%', maxWidth: '500px', overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' },
-  header: { background: 'linear-gradient(135deg, #f093fb, #f5576c)', padding: '24px', textAlign: 'center' },
-  headerTitle: { margin: 0, color: 'white', fontSize: '22px' },
-  headerSub: { margin: '6px 0 0', color: 'rgba(255,255,255,0.85)', fontSize: '14px' },
-  body: { padding: '24px' },
-  error: { background: '#f8d7da', color: '#721c24', padding: '10px 14px', borderRadius: '8px', marginBottom: '16px', fontSize: '14px' },
-  field: { marginBottom: '18px' },
-  label: { display: 'block', fontWeight: '600', fontSize: '14px', color: '#333', marginBottom: '6px' },
-  input: { width: '100%', padding: '10px 14px', border: '1px solid #dee2e6', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box' },
-  preview: { margin: '6px 0 0', fontSize: '13px', color: '#6c757d', fontStyle: 'italic' },
-  emailInfo: { display: 'flex', gap: '12px', alignItems: 'flex-start', backgroundColor: '#e8f4fd', borderRadius: '8px', padding: '14px', marginBottom: '20px' },
-  actions: { display: 'flex', gap: '10px' },
-  cancelBtn: { flex: 1, padding: '12px', backgroundColor: 'white', color: '#6c757d', border: '1px solid #dee2e6', borderRadius: '8px', cursor: 'pointer', fontSize: '14px' },
-  confirmBtn: { flex: 2, padding: '12px', backgroundColor: '#f5576c', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '14px', fontWeight: '600' },
-};
-
-export default HRApplications;
+export default HRApplications; 
