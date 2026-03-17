@@ -482,7 +482,7 @@ function Dashboard() {
         {/* ═══ SIDEBAR ═══ */}
         <aside className="sidebar">
           <div className="sb-logo-row">
-            <div className="sb-logo">🎯</div>
+            
             <div className="sb-logo-name">RECRUIT<span>-IQ</span></div>
           </div>
 
@@ -533,7 +533,7 @@ function Dashboard() {
                 <StatCard icon="👁️" value={jobs.length}  label="Total Jobs"       accentColor="#2563eb" glowColor="#93c5fd" bgColor="#eff6ff" loading={loading} />
                 <StatCard icon="👥" value={totalApps}     label="Total Candidates" accentColor="#16a34a" glowColor="#86efac" bgColor="#f0fdf4" loading={loading} />
                 <StatCard icon="💼" value={openJobs}      label="Open Vacancies"   accentColor="#d97706" glowColor="#fcd34d" bgColor="#fffbeb" loading={loading} />
-                <StatCard icon="🎉" value={hired}         label="Total Placed"     accentColor="#7c3aed" glowColor="#c084fc" bgColor="#f5f3ff" loading={loading} />
+                <StatCard icon="✅" value={hired}         label="Total Placed"     accentColor="#7c3aed" glowColor="#c084fc" bgColor="#f5f3ff" loading={loading} />
               </>) : (<>
                 <StatCard icon="🔍" value={jobs.length}                              label="Available Jobs"  accentColor="#2563eb" glowColor="#93c5fd" bgColor="#eff6ff" loading={loading} />
                 <StatCard icon="📋" value={jobs.filter(j=>j.already_applied).length} label="Applied"         accentColor="#16a34a" glowColor="#86efac" bgColor="#f0fdf4" loading={loading} />

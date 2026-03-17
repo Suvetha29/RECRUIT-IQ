@@ -421,6 +421,66 @@ def get_job_detail(job_id: int, db: Session = Depends(get_db), current_user: Use
         "recruiter_id": job.recruiter_id
     }
 
+   
+#//adding new function for toggling job status between open and closed by HR
+
+@app.patch("/api/jobs/{job_id}/status")
+def toggle_job_status(
+    job_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_hr_user)
+):
+    job = db.query(Job).filter(
+        Job.id == job_id,
+        Job.recruiter_id == current_user.id
+    ).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found or access denied")
+
+    job.status = JobStatus.CLOSED if job.status == JobStatus.OPEN else JobStatus.OPEN
+    db.commit()
+    db.refresh(job)
+    return {
+        "message": f"Job status updated to {job.status.value}",
+        "job_id": job.id,
+        "status": job.status.value
+    }
+
+#delete job updated code to delete the job also the assesmnts of the candidate 
+
+@app.delete("/api/jobs/{job_id}")
+def delete_job(
+    job_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_hr_user)
+):
+    from models import Assessment, AssessmentResult
+
+    job = db.query(Job).filter(
+        Job.id == job_id,
+        Job.recruiter_id == current_user.id
+    ).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found or access denied")
+
+    # 1. Delete assessment results first
+    assessments = db.query(Assessment).filter(Assessment.job_id == job_id).all()
+    for assessment in assessments:
+        db.query(AssessmentResult).filter(
+            AssessmentResult.assessment_id == assessment.id
+        ).delete()
+
+    # 2. Delete assessments
+    db.query(Assessment).filter(Assessment.job_id == job_id).delete()
+
+    # 3. Delete applications
+    db.query(Application).filter(Application.job_id == job_id).delete()
+
+    # 4. Delete the job
+    db.delete(job)
+    db.commit()
+
+    return {"message": f"Job '{job.title}' deleted successfully", "job_id": job_id}
 
 # ================= ATS APPLICATION ROUTES =================
 

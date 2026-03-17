@@ -33,7 +33,7 @@ export const jobAPI = {
   getJobDetail: (jobId) => api.get(`/api/jobs/${jobId}`),
   updateJob: (jobId, jobData) => api.put(`/api/jobs/${jobId}/`, jobData),
   deleteJob: (jobId) => api.delete(`/api/jobs/${jobId}/`),
-  toggleJobStatus: (jobId) => api.patch(`/api/jobs/${jobId}/status/`),
+  toggleJobStatus: (jobId) => api.patch(`/api/jobs/${jobId}/status`),        //removed the slash//
   generateJobDescription: (data) => api.post('/api/jobs/generate', data),
 };
 

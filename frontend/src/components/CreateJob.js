@@ -279,7 +279,7 @@ function CreateJob() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-4 px-6 bg-gradient-to-r from-green-500 to-emerald-600 text-white font-semibold rounded-lg hover:from-green-600 hover:to-emerald-700 disabled:from-gray-400 disabled:to-gray-500 disabled:cursor-not-allowed transition-all transform hover:scale-105 shadow-lg text-lg"
+              className="w-full py-4 px-6 bg-gradient-to-r from-blue-950 to-blue-950 text-white font-semibold rounded-lg hover:from-blue-700 hover:to-blue-700 disabled:from-gray-400 disabled:to-gray-500 disabled:cursor-not-allowed transition-all transform hover:scale-105 shadow-lg text-lg"
             >
               {loading ? 'Creating Job...' : '✓ Post Job'}
             </button>

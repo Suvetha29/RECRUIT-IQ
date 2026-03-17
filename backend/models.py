@@ -32,7 +32,7 @@ class JobType(enum.Enum):
     INTERNSHIP = "internship"
 
 
-class JobStatus(enum.Enum):
+class JobStatus(str, enum.Enum):
     OPEN = "open"
     CLOSED = "closed"
 
@@ -93,6 +93,9 @@ class Application(Base):
     transcript        = Column(Text,   nullable=True)
     ai_score          = Column(Float,  nullable=True)
     ai_recommendation = Column(Text,   nullable=True)
+    ai_summary        = Column(Text,   nullable=True)   # ← ADD THIS
+    ai_strengths      = Column(Text,   nullable=True)   # ← ADD THIS
+    ai_weaknesses     = Column(Text,   nullable=True)   # ← ADD THIS
 
     applied_at  = Column(DateTime, default=datetime.utcnow)
     updated_at  = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
