@@ -569,6 +569,10 @@ def get_my_applications(db: Session = Depends(get_db), current_user: User = Depe
             "meet_link":         app.meet_link,
             "ai_score":          app.ai_score,
             "ai_recommendation": app.ai_recommendation,
+            "ai_strengths":  app.ai_strengths,
+            "ai_weaknesses": app.ai_weaknesses,
+            "ai_summary":    app.ai_summary,
+            "transcript":    app.transcript,
             "assessment_result": {
                 "score":  app.assessment_result.score,
                 "passed": app.assessment_result.passed
@@ -607,6 +611,10 @@ def get_job_applicants(job_id: int, db: Session = Depends(get_db), current_user:
             "meet_link":         app.meet_link,
             "ai_score":          app.ai_score,
             "ai_recommendation": app.ai_recommendation,
+            "ai_strengths":  app.ai_strengths,
+            "ai_weaknesses": app.ai_weaknesses,
+            "ai_summary":    app.ai_summary,
+            "transcript":    app.transcript,
             "assessment_result": {
                 "score":  app.assessment_result.score,
                 "passed": app.assessment_result.passed

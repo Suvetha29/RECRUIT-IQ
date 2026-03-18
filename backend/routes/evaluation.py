@@ -112,6 +112,9 @@ Return only JSON, no extra text.
     application.transcript = transcript
     application.ai_score = evaluation.get("score", 50)
     application.ai_recommendation = evaluation.get("recommendation", "review")
+    application.ai_strengths = evaluation.get("strengths")   # ← ADDED THIS FOR AI REPORT 
+    application.ai_weaknesses = evaluation.get("weaknesses") # ← ADDED THIS FOR AI REPORT
+    application.ai_summary = evaluation.get("summary")       # ← ADDED THIS FOR AI REPORT
 
     db.commit()
 
