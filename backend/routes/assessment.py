@@ -229,3 +229,40 @@ def get_assessment_result(
         "passed": result.passed,
         "completed_at": result.completed_at.isoformat()
     }
+
+# ── HR checks detailed question-by-question breakdown ──
+@router.get("/api/assessments/results/{application_id}/detailed")
+def get_assessment_result_detailed(
+    application_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_hr_user)
+):
+    result = db.query(AssessmentResult).filter(
+        AssessmentResult.application_id == application_id
+    ).first()
+    if not result:
+        return {"message": "No assessment taken yet"}
+
+    assessment = db.query(Assessment).filter(
+        Assessment.id == result.assessment_id
+    ).first()
+
+    breakdown = []
+    for i, q in enumerate(assessment.questions):
+        candidate_answer_index = result.answers[i] if i < len(result.answers) else None
+        breakdown.append({
+            "question": q["question"],
+            "options": q["options"],
+            "correct_answer_index": q["correct_answer"],
+            "correct_answer_text": q["options"][q["correct_answer"]],
+            "candidate_answer_index": candidate_answer_index,
+            "candidate_answer_text": q["options"][candidate_answer_index] if candidate_answer_index is not None else "No answer",
+            "is_correct": candidate_answer_index == q["correct_answer"]
+        })
+
+    return {
+        "score": result.score,
+        "passed": result.passed,
+        "completed_at": result.completed_at.isoformat(),
+        "breakdown": breakdown
+    }

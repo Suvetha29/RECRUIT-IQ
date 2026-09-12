@@ -137,6 +137,8 @@ const HRApplications = () => {
   // ✅ Same as AllApplicants — live results map + popup
   const [aiResultsMap, setAiResultsMap]     = useState({});
   const [aiResult, setAiResult]             = useState(null);
+  const [assessmentDetail, setAssessmentDetail] = useState(null);
+  const [loadingAssessment, setLoadingAssessment] = useState(false);
   const user = JSON.parse(localStorage.getItem('user') || '{}');
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -194,6 +196,20 @@ const HRApplications = () => {
       document.body.appendChild(a); a.click(); a.remove();
     } catch { alert('Failed to generate offer letter.'); }
   };
+
+// get assesment details
+
+  const fetchAssessmentDetail = async (applicationId) => {
+  setLoadingAssessment(true);
+  try {
+    const res = await api.get(`/api/assessments/results/${applicationId}/detailed`);
+    setAssessmentDetail(res.data);
+  } catch (err) {
+    alert('Failed to load assessment details.');
+  } finally {
+    setLoadingAssessment(false);
+  }
+};
 
   // ✅ Exact same getAIData as AllApplicants
   const getAIData = (app, liveAI) => {
@@ -484,13 +500,21 @@ const HRApplications = () => {
                                 {Math.round(app.ats_score)}%
                               </span>
                             </td>
-                            <td>
+
+                                                        <td>
                               {app.assessment_result ? (
-                                <span className={app.assessment_result.passed?'assess-pass':'assess-fail'}>
+                                <span
+                                  className={app.assessment_result.passed?'assess-pass':'assess-fail'}
+                                  style={{cursor:'pointer'}}
+                                  onClick={() => fetchAssessmentDetail(app.application_id)}
+                                  title="Click to see question breakdown"
+                                >
                                   {app.assessment_result.passed?'✅':'❌'} {app.assessment_result.score}%
                                 </span>
                               ) : <span style={{color:'#d1d5db',fontSize:'12px'}}>—</span>}
                             </td>
+
+
                             <td>
                               {ai ? (
                                 <span className="score-pill" style={{
@@ -677,6 +701,42 @@ const HRApplications = () => {
           onConfirm={(result) => handleRecordingDone(result, recordingModal.application_id)}
           onCancel={()=>setRecordingModal(null)}/>
       )}
+
+
+{assessmentDetail && (
+  <div style={mS.overlay}>
+    <div style={{...mS.box, maxWidth:'600px', maxHeight:'80vh', overflowY:'auto'}}>
+      <div style={{...mS.header, background:'linear-gradient(135deg,#0D9488,#0369a1)'}}>
+        <h2 style={mS.hTitle}>📝 Assessment Breakdown</h2>
+        <p style={mS.hSub}>Score: {assessmentDetail.score}% · {assessmentDetail.passed ? 'Passed' : 'Failed'}</p>
+      </div>
+      <div style={mS.body}>
+        {assessmentDetail.breakdown?.map((q, idx) => (
+          <div key={idx} style={{
+            marginBottom:'16px',
+            padding:'14px',
+            borderRadius:'10px',
+            background: q.is_correct ? '#f0fdf4' : '#fef2f2',
+            border: `1px solid ${q.is_correct ? '#bbf7d0' : '#fecaca'}`
+          }}>
+            <div style={{fontWeight:700,fontSize:'13.5px',marginBottom:'8px',color:'#1a1d2e'}}>
+              Q{idx+1}. {q.question}
+            </div>
+            <div style={{fontSize:'13px',color:'#374151',marginBottom:'4px'}}>
+              <strong>Candidate's answer:</strong> {q.candidate_answer_text} {q.is_correct ? '✅' : '❌'}
+            </div>
+            {!q.is_correct && (
+              <div style={{fontSize:'13px',color:'#16a34a'}}>
+                <strong>Correct answer:</strong> {q.correct_answer_text}
+              </div>
+            )}
+          </div>
+        ))}
+        <button style={{...mS.confirmBtn,width:'100%',background:'#1a1d2e'}} onClick={()=>setAssessmentDetail(null)}>Close</button>
+      </div>
+    </div>
+  </div>
+)}
 
       {/* ✅ AI Result popup after upload — same as AllApplicants */}
       {aiResult && (

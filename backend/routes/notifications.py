@@ -57,11 +57,14 @@ def mark_read(
     return {"message": "Marked as read"}
 
 # Helper to create notification (called from other routes)
-def create_notification(db: Session, user_id: int, title: str, message: str):
+def create_notification(db: Session, user_id: int, title: str, message: str, job_id: int = None, application_id: int = None):
     notification = Notification(
         user_id=user_id,
         title=title,
-        message=message
+        message=message,
+        job_id=job_id,
+        application_id=application_id
     )
     db.add(notification)
     db.commit()
+

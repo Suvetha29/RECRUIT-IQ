@@ -88,7 +88,7 @@ Return only JSON, no extra text.
 
     try:
         response = client.chat.completions.create(
-            model="llama-3.1-8b-instant",
+            model="groq/compound-mini",
             messages=[
                 {"role": "system", "content": "You are an HR evaluator. Return only valid JSON."},
                 {"role": "user", "content": eval_prompt}

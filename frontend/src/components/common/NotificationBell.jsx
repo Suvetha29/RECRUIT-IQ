@@ -96,20 +96,20 @@ const NotificationBell = () => {
                     backgroundColor: n.is_read ? 'white' : '#EFF6FF'
                   }}
                   
-                onClick={() => {
-                markRead(n.id);
-                setOpen(false);
-                // Navigate based on notification type
-                if (n.title.includes('Assessment')) {
+                   onClick={() => {
+                   markRead(n.id);
+                   setOpen(false);
+                   // Check most specific conditions FIRST
+                   if (n.title.includes('Passed') || n.title.includes('Failed')) {
+                   navigate('/dashboard');
+                   } else if (n.title.includes('Assessment')) {
+                   navigate('/my-applications');
+                  } else if (n.title.includes('Interview')) {
                     navigate('/my-applications');
-                } else if (n.title.includes('Interview')) {
-                    navigate('/my-applications');
-                } else if (n.title.includes('Shortlisted')) {
-                    navigate('/my-applications');
-                } else if (n.title.includes('Passed') || n.title.includes('Failed')) {
-                    navigate('/dashboard');
-                }
-                }}
+                   } else if (n.title.includes('Shortlisted')) {
+                   navigate('/my-applications');
+                   }
+                  }}
 
                 >
                   <div style={styles.itemContent}>

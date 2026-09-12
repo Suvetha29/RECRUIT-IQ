@@ -285,24 +285,27 @@ def generate_job_content(
 ):
     try:
         prompt = (
-            f"Generate a job description for a {request.title} at {request.company}. "
+            f"Generate a detailed, professional job description for a {request.title} at {request.company}. "
             "Return only a JSON object with exactly these three keys: description, requirements, responsibilities. "
-            "Use plain text only. No special characters. No line breaks inside values. Keep it concise."
+            "The 'description' should be 4-6 sentences covering the role, team, and impact. "
+            "The 'requirements' should list at least 6-8 specific skills, tools, and experience levels, separated by periods. "
+            "The 'responsibilities' should list at least 6-8 specific day-to-day tasks, separated by periods. "
+            "Use plain text only. No special characters. No line breaks inside values."
         )
         response = client.chat.completions.create(
-            model="llama-3.1-8b-instant",
+            model="groq/compound-mini",
             messages=[
                 {
                     "role": "system",
-                    "content": "You are a JSON generator. Output only a single valid JSON object. No markdown. No code blocks. No newlines inside string values. No special characters. Be concise."
+                    "content": "You are a JSON generator that writes detailed, professional job postings. Output only a single valid JSON object. No markdown. No code blocks. No newlines inside string values. No special characters. Be thorough and detailed, not brief."
                 },
                 {
                     "role": "user",
                     "content": prompt
                 }
             ],
-            temperature=0.1,
-            max_tokens=500
+            temperature=0.4,
+            max_tokens=1200
         )
         raw = response.choices[0].message.content.strip()
         print("Raw AI response:", raw)
@@ -512,11 +515,13 @@ async def apply_for_job(
     with open(file_path, "wb") as f:
         f.write(content)
 
-    resume_text = extract_text_from_pdf(file_path)
+        resume_text = extract_text_from_pdf(file_path)
+    print("EXTRACTED RESUME TEXT (first 500 chars):", resume_text[:500])
+    print("EXTRACTED TEXT LENGTH:", len(resume_text))
     if not resume_text.strip():
         resume_text = f"Resume uploaded by {current_user.full_name}"
 
-    ats_result = calculate_ats_score(resume_text, job)
+    ats_result = calculate_ats_score(resume_text, job) 
 
     application = Application(
         candidate_id=current_user.id,
