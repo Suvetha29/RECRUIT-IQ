@@ -23,3 +23,8 @@ dist/
 
 # Uploaded files (Recruit-IQ)
 backend/uploads/
+
+# Playwright debug artifacts
+frontend/debug-*.png
+frontend/test-results/
+frontend/playwright-report/
